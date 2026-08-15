@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { terrainFoundations } from './TerrainFoundationSystem.js';
 
 /**
  * Map Configuration & Layout Data
@@ -159,14 +160,10 @@ export function getTerrainHeight(x, z) {
     h = THREE.MathUtils.lerp(h, targetRoadH, blend * 0.9);
   }
 
-  // Smooth flat flattening for designated clearing zones
-  for (const cl of CLEARINGS) {
-    const clDist = Math.hypot(x - cl.x, z - cl.z);
-    if (clDist < cl.radius) {
-      const clBlend = Math.cos((clDist / cl.radius) * Math.PI * 0.5);
-      const baseClH = (cl.id === 'camp' ? 3.0 : cl.id === 'start' ? 2.5 : cl.id === 'gasStation' ? 2.2 : cl.id === 'farm' ? 1.7 : 2.8);
-      h = THREE.MathUtils.lerp(h, baseClH, clBlend * 0.85);
-    }
+  // Authored Foundation Zones: Flatten and smoothly blend building construction footprints
+  const foundationSample = terrainFoundations.sampleFoundation(x, z, h);
+  if (foundationSample) {
+    h = foundationSample.height;
   }
 
   // NATURAL SURROUNDING MOUNTAIN RIDGE & BACKDROP

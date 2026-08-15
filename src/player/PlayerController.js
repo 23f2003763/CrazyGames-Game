@@ -84,22 +84,41 @@ export class PlayerController {
     }
     
     // Smooth height interpolation over walkable surfaces and terrain
+    let targetGroundY = 0;
     if (this.walkableSurfaceSystem) {
-      const targetY = this.walkableSurfaceSystem.sampleHeight(
+      targetGroundY = this.walkableSurfaceSystem.sampleHeight(
         this.player.position.x, 
         this.player.position.z, 
         this.player.position.y
       );
-      
-      const diff = targetY - this.player.position.y;
-      if (Math.abs(diff) > 2.5) {
-        this.player.position.y = targetY;
-      } else {
-        this.player.position.y += diff * Math.min(1.0, 24.0 * dt);
-      }
     } else {
-      this.player.position.y = getTerrainHeight(this.player.position.x, this.player.position.z) + 0.03;
+      targetGroundY = getTerrainHeight(this.player.position.x, this.player.position.z);
     }
+
+    if (this.currentGroundY === undefined || Number.isNaN(this.currentGroundY)) {
+      this.currentGroundY = targetGroundY;
+    }
+
+    const deltaY = targetGroundY - this.currentGroundY;
+    const absDelta = Math.abs(deltaY);
+
+    if (absDelta < 0.35) {
+      // Small ordinary elevation changes: smooth natural damp
+      this.currentGroundY += deltaY * Math.min(1.0, 14.0 * dt);
+    } else if (absDelta <= 0.90) {
+      // Medium steps: fast smooth step
+      this.currentGroundY += deltaY * Math.min(1.0, 22.0 * dt);
+    } else {
+      // Steep vertical cliff / bridge ledge > 0.90m: reject sudden teleport
+      if (absDelta > 3.5) {
+        // Only allow teleport if respawning or falling off map
+        this.currentGroundY = targetGroundY;
+      } else {
+        this.currentGroundY += Math.sign(deltaY) * 0.90 * Math.min(1.0, 10.0 * dt);
+      }
+    }
+
+    this.player.position.y = this.currentGroundY;
   }
   
   updateDodge(dt) {

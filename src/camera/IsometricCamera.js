@@ -130,6 +130,12 @@ export class IsometricCamera {
         this.toggleMode();
       }
 
+      // F6 Toggle Foundation / Material Debug
+      if (e.code === 'F6') {
+        e.preventDefault();
+        if (this.onToggleFoundationDebug) this.onToggleFoundationDebug();
+      }
+
       // F7 Toggle Collider Visualization
       if (e.code === 'F7') {
         e.preventDefault();

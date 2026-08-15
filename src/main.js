@@ -9,6 +9,7 @@ import { ColliderRegistry } from './physics/ColliderRegistry.js';
 import { WalkableSurfaceSystem } from './physics/WalkableSurfaceSystem.js';
 import { CameraOcclusion } from './camera/CameraOcclusion.js';
 import { MovementFX } from './vfx/MovementFX.js';
+import { terrainFoundations } from './world/TerrainFoundationSystem.js';
 
 /**
  * Main Application Orchestrator
@@ -74,7 +75,11 @@ class GameApp {
     );
     this.cameraOcclusion.setRoots(this.world.locationRegistry.roots);
 
-    // 9. Debug Hooks (F7 Colliders, F9 Walkables)
+    // 9. Debug Hooks (F6 Foundations, F7 Colliders, F9 Walkables)
+    this.cameraController.onToggleFoundationDebug = () => {
+      const active = terrainFoundations.toggleDebug(this.scene);
+      console.log(`[DEBUG] Foundation zones visualization: ${active ? 'ON' : 'OFF'}`);
+    };
     this.cameraController.onToggleColliders = () => {
       const active = this.collision.toggleDebug(undefined, this.player);
       console.log(`[DEBUG] Colliders visualization: ${active ? 'ON' : 'OFF'}`);

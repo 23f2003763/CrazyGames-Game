@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getTerrainHeight } from './MapData.js';
+import { terrainFoundations } from './TerrainFoundationSystem.js';
 
 export class LocationRegistry {
   constructor(scene) {
@@ -30,28 +30,28 @@ export class LocationRegistry {
   }
   
   initializeTransforms() {
-    // 1. Relay Hub (Clearing 1) - Natural 1:1 metric gameplay scale
-    this.roots.relay.position.set(-95.0, getTerrainHeight(-95, 70) + 0.02, 70.0);
+    // 1. Relay Hub (Clearing 1) - Natural 1:1 metric scale at foundation elevation
+    this.roots.relay.position.set(-95.0, terrainFoundations.getFoundationHeight('relay'), 70.0);
     this.roots.relay.rotation.y = Math.PI * 0.42;
     this.roots.relay.scale.set(1.0, 1.0, 1.0);
     
-    // 2. Gas Station / Octane Mart (Clearing 2) - Natural 1:1 metric gameplay scale
-    this.roots.gasStation.position.set(-66.0, getTerrainHeight(-66, -34) + 0.02, -34.0);
+    // 2. Gas Station / Octane Mart (Clearing 2) - Natural 1:1 metric scale at foundation elevation
+    this.roots.gasStation.position.set(-66.0, terrainFoundations.getFoundationHeight('gasStation'), -34.0);
     this.roots.gasStation.rotation.y = Math.PI * 0.82;
     this.roots.gasStation.scale.set(1.0, 1.0, 1.0);
     
     // 3. Broken Span Bridge (Clearing 3)
-    this.roots.brokenSpan.position.set(-5.0, getTerrainHeight(-5, 22) + 0.02, 22.0);
+    this.roots.brokenSpan.position.set(-5.0, terrainFoundations.getFoundationHeight('brokenSpan'), 22.0);
     this.roots.brokenSpan.rotation.y = Math.PI * 0.18;
     this.roots.brokenSpan.scale.set(1.12, 1.12, 1.12);
     
     // 4. Survivor Camp (Clearing 4)
-    this.roots.survivorCamp.position.set(45.0, getTerrainHeight(45, -32), -32.0);
+    this.roots.survivorCamp.position.set(36.0, terrainFoundations.getFoundationHeight('survivorCamp'), -62.0);
     this.roots.survivorCamp.rotation.y = 0.0;
     this.roots.survivorCamp.scale.set(1.0, 1.0, 1.0);
     
     // 5. Outpost Omega (Clearing 5)
-    this.roots.outpostOmega.position.set(100.0, getTerrainHeight(100, -72) + 0.02, -72.0);
+    this.roots.outpostOmega.position.set(100.0, terrainFoundations.getFoundationHeight('outpostOmega'), -72.0);
     this.roots.outpostOmega.rotation.y = -Math.PI * 0.28;
     this.roots.outpostOmega.scale.set(1.15, 1.15, 1.15);
   }

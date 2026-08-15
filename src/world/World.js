@@ -13,6 +13,8 @@ import { LocationGroundZones } from './LocationGroundZones.js';
 import { SurvivorCampDressing } from './SurvivorCampDressing.js';
 import { WorldAmbientFX } from '../vfx/WorldAmbientFX.js';
 import { LocationRegistry } from './LocationRegistry.js';
+import { GroundDecalSystem } from './GroundDecalSystem.js';
+import { WORLD_MATERIALS } from '../rendering/WorldMaterials.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
@@ -46,6 +48,9 @@ export class World {
 
     // Terrain integration ground zones for Relay and Gas Station
     this.locationGroundZones = new LocationGroundZones(this.locationRegistry.roots);
+
+    // Ground Decals (oil stains, tire tracks, mud, campfire scorch)
+    this.groundDecals = new GroundDecalSystem(this.scene, this.locationRegistry.roots);
 
     // Survivor Camp authored dressing (Clearing 4)
     this.survivorCamp = new SurvivorCampDressing(this.locationRegistry.roots.survivorCamp);
@@ -506,6 +511,14 @@ export class World {
     const medRockCount = 200;
     const smallRockCount = 280;
 
+    const rockColors = [
+      new THREE.Color(0x5e6368), // Slate Grey
+      new THREE.Color(0x726456), // Warm Granite
+      new THREE.Color(0x36383c), // Dark Charcoal
+      new THREE.Color(0x526446), // Mossy Slate
+      new THREE.Color(0x787a74), // Sun-bleached Stone
+    ];
+
     const largeRockMesh = new THREE.InstancedMesh(this.factory.geometries.boulderLarge, this.factory.materials.rockGrey, largeRockCount);
     const medRockMesh = new THREE.InstancedMesh(this.factory.geometries.boulderMed, this.factory.materials.rockMossy, medRockCount);
     const smallRockMesh = new THREE.InstancedMesh(this.factory.geometries.rockSmall, this.factory.materials.rockDark, smallRockCount);
@@ -534,14 +547,24 @@ export class World {
       const scaleY = scaleMultiplier * (0.8 + Math.random() * 0.6);
       const scaleZ = scaleMultiplier * (0.9 + Math.random() * 0.3);
 
-      dummy.position.set(rx, y + (scaleY * 0.7), rz);
-      dummy.rotation.set(Math.random() * 0.5, Math.random() * Math.PI * 2, Math.random() * 0.5);
+      // Align slightly with local terrain slope
+      const eps = 0.8;
+      const slopeX = (getTerrainHeight(rx - eps, rz) - getTerrainHeight(rx + eps, rz)) * 0.25;
+      const slopeZ = (getTerrainHeight(rx, rz - eps) - getTerrainHeight(rx, rz + eps)) * 0.25;
+
+      dummy.position.set(rx, y + (scaleY * 0.65), rz);
+      dummy.rotation.set(slopeZ + (Math.random() - 0.5) * 0.2, Math.random() * Math.PI * 2, slopeX + (Math.random() - 0.5) * 0.2);
       dummy.scale.set(scaleX, scaleY, scaleZ);
       dummy.updateMatrix();
-      largeRockMesh.setMatrixAt(lIdx++, dummy.matrix);
+      largeRockMesh.setMatrixAt(lIdx, dummy.matrix);
+
+      const colIdx = Math.floor(Math.abs(Math.sin(rx * 3.7 + rz * 1.9)) * rockColors.length);
+      largeRockMesh.setColorAt(lIdx, rockColors[colIdx]);
+      lIdx++;
     }
     largeRockMesh.count = lIdx;
     largeRockMesh.instanceMatrix.needsUpdate = true;
+    if (largeRockMesh.instanceColor) largeRockMesh.instanceColor.needsUpdate = true;
     this.scene.add(largeRockMesh);
     this.instancedMeshes.push(largeRockMesh);
 
@@ -558,14 +581,23 @@ export class World {
       const y = getTerrainHeight(rx, rz);
       const scale = 0.7 + Math.random() * 0.7;
 
-      dummy.position.set(rx, y + (scale * 0.5), rz);
-      dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI * 2, Math.random() * Math.PI);
+      const eps = 0.5;
+      const slopeX = (getTerrainHeight(rx - eps, rz) - getTerrainHeight(rx + eps, rz)) * 0.25;
+      const slopeZ = (getTerrainHeight(rx, rz - eps) - getTerrainHeight(rx, rz + eps)) * 0.25;
+
+      dummy.position.set(rx, y + (scale * 0.45), rz);
+      dummy.rotation.set(slopeZ, Math.random() * Math.PI * 2, slopeX);
       dummy.scale.set(scale, scale * (0.7 + Math.random() * 0.4), scale);
       dummy.updateMatrix();
-      medRockMesh.setMatrixAt(mIdx++, dummy.matrix);
+      medRockMesh.setMatrixAt(mIdx, dummy.matrix);
+
+      const colIdx = Math.floor(Math.abs(Math.cos(rx * 2.3 + rz * 4.1)) * rockColors.length);
+      medRockMesh.setColorAt(mIdx, rockColors[colIdx]);
+      mIdx++;
     }
     medRockMesh.count = mIdx;
     medRockMesh.instanceMatrix.needsUpdate = true;
+    if (medRockMesh.instanceColor) medRockMesh.instanceColor.needsUpdate = true;
     this.scene.add(medRockMesh);
     this.instancedMeshes.push(medRockMesh);
 
@@ -582,14 +614,19 @@ export class World {
       const y = getTerrainHeight(rx, rz);
       const scale = 0.6 + Math.random() * 0.6;
 
-      dummy.position.set(rx, y + 0.2, rz);
-      dummy.rotation.set(Math.random() * 2, Math.random() * Math.PI * 2, Math.random() * 2);
+      dummy.position.set(rx, y + 0.15, rz);
+      dummy.rotation.set(Math.random() * 0.4, Math.random() * Math.PI * 2, Math.random() * 0.4);
       dummy.scale.set(scale, scale * 0.6, scale);
       dummy.updateMatrix();
-      smallRockMesh.setMatrixAt(sIdx++, dummy.matrix);
+      smallRockMesh.setMatrixAt(sIdx, dummy.matrix);
+
+      const colIdx = Math.floor(Math.abs(Math.sin(rx * 5.1 + rz * 2.8)) * rockColors.length);
+      smallRockMesh.setColorAt(sIdx, rockColors[colIdx]);
+      sIdx++;
     }
     smallRockMesh.count = sIdx;
     smallRockMesh.instanceMatrix.needsUpdate = true;
+    if (smallRockMesh.instanceColor) smallRockMesh.instanceColor.needsUpdate = true;
     this.scene.add(smallRockMesh);
     this.instancedMeshes.push(smallRockMesh);
   }

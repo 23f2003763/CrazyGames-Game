@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MAP_CONFIG, roadSpline, dirtSplines, getTerrainHeight } from './MapData.js';
+import { proceduralTextures } from '../rendering/ProceduralTextures.js';
 
 /**
  * Builds the cracked main highway, broken asphalt slabs, faded road markings,
@@ -28,9 +29,9 @@ export class RoadSystem {
     const asphaltIndices = [];
     const asphaltColors = [];
 
-    const baseColor = new THREE.Color(0x3e4244);
-    const wornColor = new THREE.Color(0x4c5053);
-    const brokenEdgeColor = new THREE.Color(0x575147);
+    const baseColor = new THREE.Color(0x383a3d);
+    const wornColor = new THREE.Color(0x464a4d);
+    const brokenEdgeColor = new THREE.Color(0x524c42);
 
     // Build ribbon segments along the spline
     for (let i = 0; i <= steps; i++) {
@@ -89,9 +90,15 @@ export class RoadSystem {
     geometry.setIndex(asphaltIndices);
     geometry.computeVertexNormals();
 
+    const asphaltMaps = proceduralTextures.getAsphaltTexture(256);
+    asphaltMaps.diffuse.repeat.set(8, 30);
+    asphaltMaps.roughness.repeat.set(8, 30);
+
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.9,
+      map: asphaltMaps.diffuse,
+      roughnessMap: asphaltMaps.roughness,
+      roughness: 0.84,
       metalness: 0.05,
       flatShading: true,
     });
@@ -323,10 +330,17 @@ export class RoadSystem {
 
   createDirtPaths() {
     // Dirt paths branching off to clearings
+    const dirtMaps = proceduralTextures.getDirtTexture(256);
+    dirtMaps.diffuse.repeat.set(4, 16);
+    dirtMaps.roughness.repeat.set(4, 16);
+
     const dirtColor = new THREE.Color(0x765c3b);
     const dirtMat = new THREE.MeshStandardMaterial({
       color: dirtColor,
-      roughness: 0.95,
+      map: dirtMaps.diffuse,
+      roughnessMap: dirtMaps.roughness,
+      roughness: 0.94,
+      metalness: 0.02,
       flatShading: true,
     });
 
