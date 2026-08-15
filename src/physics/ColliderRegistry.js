@@ -143,6 +143,13 @@ export class ColliderRegistry {
     }
   }
 
+  resolvePosition(pos, radius = 0.45) {
+    const res = this.resolveCollision(pos.x, pos.z, radius);
+    pos.x = res.x;
+    pos.z = res.z;
+    return pos;
+  }
+
   resolveCollision(x, z, radius) {
     let resolvedX = x;
     let resolvedZ = z;
