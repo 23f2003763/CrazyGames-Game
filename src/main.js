@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { IsometricCamera } from './camera/IsometricCamera.js';
-import { World } from './world/World.js';
 import { RenderPipeline } from './rendering/RenderPipeline.js';
 import { Player } from './player/Player.js';
 import { PlayerController } from './player/PlayerController.js';
@@ -9,49 +8,64 @@ import { ColliderRegistry } from './physics/ColliderRegistry.js';
 import { WalkableSurfaceSystem } from './physics/WalkableSurfaceSystem.js';
 import { CameraOcclusion } from './camera/CameraOcclusion.js';
 import { MovementFX } from './vfx/MovementFX.js';
-import { terrainFoundations } from './world/TerrainFoundationSystem.js';
+
+// Campaign & Gameplay Core Architecture
+import { CampaignWorld } from './campaign/CampaignWorld.js';
+import { ChapterDirector } from './campaign/ChapterDirector.js';
+import { MissionSystem } from './missions/MissionSystem.js';
+import { InteractionSystem } from './gameplay/InteractionSystem.js';
+import { LootSystem } from './gameplay/LootSystem.js';
+import { NPCSystem } from './npc/NPCSystem.js';
+import { ObjectiveGuidance } from './ui/ObjectiveGuidance.js';
+import { ObjectiveHUD } from './ui/ObjectiveHUD.js';
+import { CheckpointSystem } from './gameplay/CheckpointSystem.js';
+import { AudioSystem } from './audio/AudioSystem.js';
+import { CampaignDebugOverlay } from './ui/CampaignDebugOverlay.js';
 
 /**
- * Main Application Orchestrator
- * Fully architected with LocationRegistry, WalkableSurfaceSystem, ColliderRegistry, CameraOcclusion
+ * Main Game Application Orchestrator
+ * Drives the Linear Semi-Open Campaign, Sector Management, and Level 1 Gameplay Loop.
  */
 class GameApp {
   constructor() {
     this.container = document.getElementById('canvas-container');
     
-    // 1. Core Scene
+    // 1. Core Three.js Scene
     this.scene = new THREE.Scene();
 
     // 2. Isometric Camera Controller
     this.cameraController = new IsometricCamera(this.container);
 
-    // 3. Global Rendering & Post-Processing Pipeline
+    // 3. Global Post-Processing & Rendering Pipeline
     this.renderPipeline = new RenderPipeline(
       this.container,
       this.scene,
       this.cameraController.camera
     );
 
-    // 4. World Environment & Procedural Map (Instantiates LocationRegistry)
-    this.world = new World(this.scene);
+    // 4. Core Systems: Audio, Checkpoints, Interactions, Loot, NPCs
+    this.audioSystem = new AudioSystem();
+    this.checkpointSystem = new CheckpointSystem();
+    this.interactionSystem = new InteractionSystem(this.cameraController.camera);
+    this.lootSystem = new LootSystem(this.scene, this.interactionSystem, this.audioSystem);
+    this.npcSystem = new NPCSystem(this.scene, this.interactionSystem);
 
-    // 5. Physics & Walkable Surface Systems
+    // 5. Campaign World (+Z corridor, 7m highway, 3 Sectors, Electric Fences)
+    this.world = new CampaignWorld(
+      this.scene, 
+      this.interactionSystem, 
+      this.lootSystem, 
+      this.npcSystem
+    );
+
+    // 6. Physics & Walkable Surfaces
     this.collision = new ColliderRegistry(this.scene);
-    this.collision.buildFromRoots(this.world.locationRegistry.roots);
-    
     this.walkableSurfaceSystem = new WalkableSurfaceSystem(this.scene);
-    this.walkableSurfaceSystem.buildFromRoots(this.world.locationRegistry.roots);
+    if (this.world.terrainMesh) {
+      this.walkableSurfaceSystem.registerSurface(this.world.terrainMesh, 'terrain');
+    }
 
-    // Rebuild collision and walkable surfaces whenever a location finishes loading
-    this.world.onLocationLoaded = (locName) => {
-      this.collision.buildFromRoots(this.world.locationRegistry.roots);
-      this.walkableSurfaceSystem.buildFromRoots(this.world.locationRegistry.roots);
-      if (locName === 'relay') {
-        this.spawnPlayerAtRelay();
-      }
-    };
-
-    // 6. Playable Player Survivor (Ryder)
+    // 7. Playable Hero (Ryder)
     this.player = new Player(this.scene);
     this.playerController = new PlayerController(
       this.player, 
@@ -61,36 +75,65 @@ class GameApp {
     );
     this.playerAnimator = new PlayerAnimator(this.player);
 
-    // 7. Dynamic Spawn via SPAWN_PLAYER Marker in Relay
-    this.spawnPlayerAtRelay();
-
-    // Connect camera tracking to player
+    // Spawn Ryder inside The Relay courtyard facing +Z towards the road
+    this.player.position.set(0.0, 0.0, -8.0);
+    this.player.rotation.y = 0.0;
     this.cameraController.setPlayer(this.player);
 
-    // 8. Camera Occlusion System
+    // 8. Mission & Objective Systems
+    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
+    this.chapterDirector = new ChapterDirector(this.world, this.missionSystem);
+    this.objectiveGuidance = new ObjectiveGuidance(this.scene);
+    this.objectiveHUD = new ObjectiveHUD();
+
+    // Initialize HUD & Guidance with first objective
+    const initialObj = this.missionSystem.getCurrentObjective();
+    this.objectiveHUD.setObjective(initialObj, this.missionSystem.currentMission);
+    this.objectiveGuidance.setObjective(initialObj);
+
+    // Wire Objective Change & Mission Completion Callbacks
+    this.missionSystem.onObjectiveChanged = (obj, mission) => {
+      this.objectiveHUD.setObjective(obj, mission);
+      this.objectiveGuidance.setObjective(obj);
+    };
+
+    this.missionSystem.onMissionCompleted = (mission) => {
+      this.objectiveHUD.showLevelComplete(mission.title);
+      if (this.audioSystem) {
+        this.audioSystem.playLevelComplete();
+      }
+    };
+
+    // 9. Camera Structural Occlusion
     this.cameraOcclusion = new CameraOcclusion(
       this.scene, 
       this.cameraController.camera, 
       this.player
     );
-    this.cameraOcclusion.setRoots(this.world.locationRegistry.roots);
+    this.cameraOcclusion.setRoots({
+      sectors: this.world.sectorManager.rootGroup
+    });
 
-    // 9. Debug Hooks (F6 Foundations, F7 Colliders, F9 Walkables)
-    this.cameraController.onToggleFoundationDebug = () => {
-      const active = terrainFoundations.toggleDebug(this.scene);
-      console.log(`[DEBUG] Foundation zones visualization: ${active ? 'ON' : 'OFF'}`);
-    };
+    // 10. Visual Effects & Particles
+    this.movementFX = new MovementFX(this.scene);
+
+    // 11. Debug Overlay (F5)
+    this.debugOverlay = new CampaignDebugOverlay(
+      this.chapterDirector,
+      this.missionSystem,
+      this.world.sectorManager,
+      this.player
+    );
+
+    // Debug Shortcuts (F7 Colliders, F9 Walkables)
     this.cameraController.onToggleColliders = () => {
       const active = this.collision.toggleDebug(undefined, this.player);
-      console.log(`[DEBUG] Colliders visualization: ${active ? 'ON' : 'OFF'}`);
+      console.log(`[DEBUG] Colliders: ${active ? 'ON' : 'OFF'}`);
     };
     this.cameraController.onToggleWalkable = () => {
       const active = this.walkableSurfaceSystem.toggleDebug();
-      console.log(`[DEBUG] Walkable surfaces visualization: ${active ? 'ON' : 'OFF'}`);
+      console.log(`[DEBUG] Walkable Surfaces: ${active ? 'ON' : 'OFF'}`);
     };
-
-    // 10. Movement VFX
-    this.movementFX = new MovementFX(this.scene);
 
     this.clock = new THREE.Clock();
     this.animate = this.animate.bind(this);
@@ -98,30 +141,8 @@ class GameApp {
 
     window.addEventListener('resize', this.onWindowResize);
 
-    // Start 60fps render loop
+    // Start render loop
     this.animate();
-  }
-
-  spawnPlayerAtRelay() {
-    let spawnWorldPos = new THREE.Vector3();
-    let found = false;
-
-    this.world.locationRegistry.roots.relay.updateMatrixWorld(true);
-    this.world.locationRegistry.roots.relay.traverse((child) => {
-      if (!found && child.name === 'SPAWN_PLAYER') {
-        child.getWorldPosition(spawnWorldPos);
-        found = true;
-      }
-    });
-
-    if (!found) {
-      // Fallback coordinate if marker not found
-      spawnWorldPos.set(-95, 0, 68);
-    }
-
-    const groundY = this.walkableSurfaceSystem.sampleHeight(spawnWorldPos.x, spawnWorldPos.z);
-    this.player.position.set(spawnWorldPos.x, groundY, spawnWorldPos.z);
-    this.player.rotation.y = Math.PI * 0.75; // Face towards the exit gate
   }
 
   onWindowResize() {
@@ -136,13 +157,17 @@ class GameApp {
     const deltaTime = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    // 1. Input & Physics Update
+    // 1. Input & Hero Physics Update
     this.playerController.update(deltaTime);
 
-    // 2. Procedural Animation Update
-    this.playerAnimator.update(deltaTime, this.playerController.velocity, this.playerController.state);
+    // 2. Skeletal Animation Update
+    this.playerAnimator.update(
+      deltaTime, 
+      this.playerController.velocity, 
+      this.playerController.state
+    );
 
-    // 3. Movement VFX Update
+    // 3. Movement Dust VFX Update
     if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
       this.movementFX.emitDust(this.player.position.x, this.player.position.z, 2.0, 4);
     } else if (this.playerController.state !== 'idle') {
@@ -156,31 +181,30 @@ class GameApp {
     }
     this.movementFX.update(deltaTime, this.cameraController.camera);
 
-    // 4. Isometric Camera Tracking
-    this.cameraController.update(deltaTime);
+    // 4. Campaign World & Sector Update
+    this.world.update(this.player.position);
 
-    // 5. Structural Camera Occlusion
+    // 5. Gameplay Systems Update
+    this.interactionSystem.update(this.player.position);
+    this.lootSystem.update(deltaTime, this.player.position);
+    this.npcSystem.update(deltaTime, this.player.position);
+    this.missionSystem.update(this.player.position);
+    this.objectiveGuidance.update(deltaTime, this.player.position);
+
+    // 6. Camera Tracking & Structural Occlusion
+    this.cameraController.update(deltaTime);
     this.cameraOcclusion.update(deltaTime);
 
-    // 6. Debug visuals update
+    // 7. Debug Overlays Update
     this.collision.updateDebug(this.player);
+    this.debugOverlay.update();
 
-    // 7. Ambient Environmental VFX Update
-    if (this.world?.ambientFX) {
-      this.world.ambientFX.update(deltaTime);
-    }
-
-    // 8. Water surface subtle wave
-    if (this.world?.terrain?.waterMesh) {
-      this.world.terrain.waterMesh.position.y = Math.sin(elapsedTime * 1.5) * 0.04;
-    }
-
-    // 9. Post-Processed Render
+    // 8. Final Render
     this.renderPipeline.render(deltaTime, this.cameraController.target);
   }
 }
 
-// Initialize on DOM load
+// Boot application when DOM is ready
 window.addEventListener('DOMContentLoaded', () => {
   new GameApp();
 });

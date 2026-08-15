@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getTerrainHeight } from '../world/MapData.js';
+import { SlopeLimiter } from '../physics/SlopeLimiter.js';
 
 export class PlayerController {
   constructor(player, cameraController, collisionSystem, walkableSurfaceSystem) {
@@ -7,6 +8,13 @@ export class PlayerController {
     this.cameraController = cameraController;
     this.collisionSystem = collisionSystem;
     this.walkableSurfaceSystem = walkableSurfaceSystem;
+
+    this.slopeLimiter = new SlopeLimiter((x, z) => {
+      if (this.walkableSurfaceSystem) {
+        return this.walkableSurfaceSystem.sampleHeight(x, z);
+      }
+      return getTerrainHeight(x, z);
+    });
     
     // Input state
     this.keys = {
@@ -166,6 +174,10 @@ export class PlayerController {
       const targetVelocity = inputVec.clone().multiplyScalar(targetSpeed);
       this.velocity.lerp(targetVelocity, this.acceleration * dt);
       
+      if (this.slopeLimiter) {
+        const res = this.slopeLimiter.filterMovement(this.player.position, this.velocity, dt);
+        this.velocity.copy(res.allowedVelocity);
+      }
     } else {
       this.velocity.lerp(new THREE.Vector3(), this.friction * dt);
       this.state = 'idle';
