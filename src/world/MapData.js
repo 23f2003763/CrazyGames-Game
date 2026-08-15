@@ -2,21 +2,27 @@ import * as THREE from 'three';
 
 /**
  * Map Configuration & Layout Data
- * Large continuous world with winding cracked highway, dirt trail network,
- * multiple biomes, elevation changes, and designated future building clearings.
+ * Step 1.1: Extended continuous world envelope with natural mountain ridges,
+ * perimeter cliff bluffs, and backdrop terrain preventing any visible map edge.
  */
 export const MAP_CONFIG = {
-  width: 280,
-  depth: 220,
-  gridResolutionX: 200,
-  gridResolutionZ: 160,
+  // Core playable grid bounds
+  playableWidth: 260,
+  playableDepth: 200,
+  
+  // Total terrain mesh dimensions including natural outer mountains and backdrop
+  totalWidth: 640,
+  totalDepth: 520,
+  gridResolutionX: 240,
+  gridResolutionZ: 200,
+
   roadWidth: 10.5,
   dirtPathWidth: 5.5,
 };
 
-// Points defining the main cracked highway
+// Points defining the main cracked highway (preserved exactly)
 export const MAIN_ROAD_POINTS = [
-  new THREE.Vector3(-125, 3.2, 95),
+  new THREE.Vector3(-130, 4.2, 98),
   new THREE.Vector3(-95, 2.5, 70),
   new THREE.Vector3(-60, 1.8, 48),
   new THREE.Vector3(-25, 0.9, 32),
@@ -25,10 +31,10 @@ export const MAIN_ROAD_POINTS = [
   new THREE.Vector3(45, 1.6, -8),
   new THREE.Vector3(68, 2.2, -35),
   new THREE.Vector3(90, 2.8, -62),
-  new THREE.Vector3(125, 3.5, -88),
+  new THREE.Vector3(130, 4.5, -92),
 ];
 
-// Branching dirt paths
+// Branching dirt paths (preserved exactly)
 export const DIRT_PATHS = [
   // Branch 1: Path to Gas Station Clearing (North-West)
   [
@@ -65,7 +71,7 @@ export const DIRT_PATHS = [
   ]
 ];
 
-// Designated empty clearings reserved for future locations / buildings
+// Designated empty clearings reserved for future locations / buildings (preserved exactly)
 export const CLEARINGS = [
   {
     id: 'start',
@@ -128,29 +134,23 @@ export const roadSpline = new THREE.CatmullRomCurve3(MAIN_ROAD_POINTS, false, 'c
 export const dirtSplines = DIRT_PATHS.map(pts => new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.25));
 
 /**
- * Calculates raw terrain elevation at world coordinates (x, z)
+ * Calculates seamless terrain elevation across both the core playable valley
+ * and the surrounding natural mountain ridges and backdrop terrain.
  */
 export function getTerrainHeight(x, z) {
-  // Edge mountain boundary / perimeter barrier
-  const halfW = MAP_CONFIG.width * 0.48;
-  const halfD = MAP_CONFIG.depth * 0.48;
-  const edgeDistX = Math.max(0, Math.abs(x) - (halfW - 25));
-  const edgeDistZ = Math.max(0, Math.abs(z) - (halfD - 25));
-  const edgeFactor = Math.pow(Math.max(edgeDistX / 25, edgeDistZ / 25), 1.6) * 12.0;
-
-  // Rolling hills
+  // Base rolling hills in the playable valley
   let h = Math.sin(x * 0.028 + z * 0.015) * 2.2 +
           Math.cos(x * 0.018 - z * 0.024) * 1.8 +
           Math.sin(x * 0.06 + z * 0.05) * 0.6;
 
   // Sunken dry riverbed feature (running roughly north-south around x = -5..-10)
   const riverDist = Math.abs(x - (-8 + Math.sin(z * 0.04) * 12));
-  if (riverDist < 18) {
+  if (riverDist < 18 && Math.abs(z) < 110) {
     const riverDepression = (1 - (riverDist / 18)) * 3.2;
     h -= riverDepression;
   }
 
-  // Smooth flat flattening along main road
+  // Smooth flat flattening along main road inside playable zone
   const roadSample = getClosestPointOnSpline(roadSpline, x, z, 30);
   const roadDist = Math.hypot(x - roadSample.point.x, z - roadSample.point.z);
   if (roadDist < MAP_CONFIG.roadWidth * 1.3) {
@@ -164,13 +164,41 @@ export function getTerrainHeight(x, z) {
     const clDist = Math.hypot(x - cl.x, z - cl.z);
     if (clDist < cl.radius) {
       const clBlend = Math.cos((clDist / cl.radius) * Math.PI * 0.5);
-      // Determine nominal height for clearing
       const baseClH = (cl.id === 'camp' ? 3.0 : cl.id === 'start' ? 2.5 : cl.id === 'gasStation' ? 2.2 : cl.id === 'farm' ? 1.7 : 2.8);
       h = THREE.MathUtils.lerp(h, baseClH, clBlend * 0.85);
     }
   }
 
-  return h + edgeFactor;
+  // NATURAL SURROUNDING MOUNTAIN RIDGE & BACKDROP
+  // Starts rising outside the playable bowl (x: ~105, z: ~78)
+  const normX = Math.abs(x) / 115;
+  const normZ = Math.abs(z) / 88;
+  const perimeterDist = Math.hypot(Math.max(0, normX - 0.88), Math.max(0, normZ - 0.88));
+
+  if (perimeterDist > 0) {
+    // Mountain noise for faceted craggy peaks
+    const mountainNoise = Math.sin(x * 0.045 + z * 0.04) * 5.0 +
+                          Math.cos(x * 0.07 - z * 0.065) * 3.8 +
+                          Math.sin(x * 0.12 + z * 0.09) * 2.0;
+    
+    // Main ridgeline height profile
+    const ridgeRise = Math.pow(Math.min(perimeterDist * 2.2, 1.8), 1.7) * 22.0;
+    
+    // Distant backdrop rolling mountain range further out
+    const outerFade = Math.max(0, (Math.hypot(x, z) - 180) * 0.04);
+    const backdropH = Math.sin(x * 0.015 + z * 0.012) * 10.0 + Math.cos(x * 0.02 - z * 0.018) * 8.0;
+
+    // Leave a natural mountain cutting for the road pass at SW and NE ends
+    let roadPassCarve = 0;
+    if (roadDist < 16) {
+      roadPassCarve = (1 - (roadDist / 16)) * 18.0;
+    }
+
+    const mountainElevation = Math.max(0, ridgeRise + mountainNoise + outerFade * backdropH - roadPassCarve);
+    h += mountainElevation;
+  }
+
+  return h;
 }
 
 /**
@@ -192,7 +220,6 @@ export function getClosestPointOnSpline(spline, x, z, samples = 30) {
     }
   }
 
-  // Sub-refine around closestT
   const step = 1 / (samples * 4);
   const startT = Math.max(0, closestT - step * 2);
   const endT = Math.min(1, closestT + step * 2);

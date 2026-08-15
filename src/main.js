@@ -49,13 +49,13 @@ class GameApp {
     // Vibrant stylized post-apocalyptic sky & fog background
     const skyColor = new THREE.Color(0xa3c8b4); // Soft pastel green-blue horizon
     this.scene.background = skyColor;
-    this.scene.fog = new THREE.FogExp2(0xa3c8b4, 0.0048);
+    this.scene.fog = new THREE.FogExp2(0xa3c8b4, 0.0035);
   }
 
   initLighting() {
     // 1. Hemisphere Light for rich ambient fill (warm sky + earthy ground bounce)
     const hemiLight = new THREE.HemisphereLight(0xdcf0fb, 0x3d4a36, 0.85);
-    hemiLight.position.set(0, 80, 0);
+    hemiLight.position.set(0, 90, 0);
     this.scene.add(hemiLight);
 
     // 2. Main Directional Sunlight (angled for clean isometric shadows)
@@ -67,9 +67,9 @@ class GameApp {
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 280;
+    sunLight.shadow.camera.far = 320;
 
-    const shadowSize = 140;
+    const shadowSize = 160;
     sunLight.shadow.camera.left = -shadowSize;
     sunLight.shadow.camera.right = shadowSize;
     sunLight.shadow.camera.top = shadowSize;
@@ -101,7 +101,7 @@ class GameApp {
     // Update isometric camera target
     this.cameraController.update(deltaTime);
 
-    // Make sunlight shadow camera follow current camera target for maximum shadow fidelity anywhere on map
+    // Dynamic shadow camera tracking current camera target
     if (this.sunLight) {
       const target = this.cameraController.target;
       this.sunLight.position.set(target.x - 90, 110, target.z + 80);

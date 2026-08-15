@@ -3,7 +3,8 @@ import { MAP_CONFIG, getTerrainHeight, CLEARINGS, roadSpline, dirtSplines, getCl
 
 /**
  * Procedural low-poly stylized terrain generator
- * Features rich vertex coloring for biomes, paths, cliff rocks, and lush meadows
+ * Step 1.1: Generates expansive continuous terrain spanning the core valley
+ * and surrounding mountain ranges with zero visible rectangular boundaries.
  */
 export class Terrain {
   constructor(scene) {
@@ -14,11 +15,10 @@ export class Terrain {
   }
 
   generate() {
-    const { width, depth, gridResolutionX, gridResolutionZ } = MAP_CONFIG;
+    const { totalWidth, totalDepth, gridResolutionX, gridResolutionZ } = MAP_CONFIG;
     
-    // Create Plane geometry with segments
-    const geometry = new THREE.PlaneGeometry(width, depth, gridResolutionX, gridResolutionZ);
-    // Rotate to lie in XZ plane
+    // Create large plane geometry covering entire camera frustum + horizon
+    const geometry = new THREE.PlaneGeometry(totalWidth, totalDepth, gridResolutionX, gridResolutionZ);
     geometry.rotateX(-Math.PI / 2);
 
     const positions = geometry.attributes.position;
@@ -31,7 +31,9 @@ export class Terrain {
     const colorDryGrass = new THREE.Color(0x8fae3e);      // Golden-green weeds
     const colorDirtPath = new THREE.Color(0x856942);      // Warm earthy dirt
     const colorRoadShoulder = new THREE.Color(0x5a544b);  // Weathered gravel/rubble
-    const colorCliffRock = new THREE.Color(0x596461);     // Slate rock
+    const colorCliffRock = new THREE.Color(0x596461);     // Slate cliff stone
+    const colorHighPeak = new THREE.Color(0x6e7878);      // Weathered mountain peak rock
+    const colorAlpineForest = new THREE.Color(0x3e5e34);  // Alpine pine slope ground
     const colorRiverBed = new THREE.Color(0x615b49);      // Dry river gravel & clay
     const colorClearingDirt = new THREE.Color(0x7c694a);  // Cleared dirt pad
 
@@ -41,22 +43,22 @@ export class Terrain {
       const x = positions.getX(i);
       const z = positions.getZ(i);
 
-      // Height
+      // Height from unified height function
       const h = getTerrainHeight(x, z);
       positions.setY(i, h);
 
-      // Determine blend factor for road proximity
+      // Road distance
       const roadInfo = getClosestPointOnSpline(roadSpline, x, z, 30);
       const roadDist = roadInfo.distance;
 
-      // Determine blend factor for branching dirt paths
+      // Dirt path distance
       let minDirtDist = Infinity;
       for (const dSpline of dirtSplines) {
         const dInfo = getClosestPointOnSpline(dSpline, x, z, 20);
         if (dInfo.distance < minDirtDist) minDirtDist = dInfo.distance;
       }
 
-      // Check proximity to clearings
+      // Proximity to designated clearings
       let clearingFactor = 0;
       for (const cl of CLEARINGS) {
         const dist = Math.hypot(x - cl.x, z - cl.z);
@@ -65,11 +67,11 @@ export class Terrain {
         }
       }
 
-      // Check riverbed proximity
+      // Sunken riverbed proximity
       const riverDist = Math.abs(x - (-8 + Math.sin(z * 0.04) * 12));
-      const inRiver = riverDist < 12;
+      const inRiver = riverDist < 12 && Math.abs(z) < 110;
 
-      // Base grass color with organic patchiness
+      // Base grass pattern with organic variation
       const noise = (Math.sin(x * 0.15) + Math.cos(z * 0.15)) * 0.5;
       if (noise > 0.3) {
         tempColor.copy(colorMeadowGrass);
@@ -85,13 +87,21 @@ export class Terrain {
         tempColor.lerp(colorRiverBed, rFactor * 0.9);
       }
 
-      // Steep cliff slope coloring
-      if (h > 6.0) {
-        const cliffFactor = Math.min(1.0, (h - 6.0) / 5.0);
-        tempColor.lerp(colorCliffRock, cliffFactor * 0.85);
+      // Mountain / Alpine slope coloring based on height and distance
+      if (h > 5.5) {
+        const alpineFactor = Math.min(1.0, (h - 5.5) / 6.0);
+        tempColor.lerp(colorAlpineForest, alpineFactor * 0.8);
+      }
+      if (h > 10.0) {
+        const cliffFactor = Math.min(1.0, (h - 10.0) / 8.0);
+        tempColor.lerp(colorCliffRock, cliffFactor * 0.9);
+      }
+      if (h > 18.0) {
+        const peakFactor = Math.min(1.0, (h - 18.0) / 10.0);
+        tempColor.lerp(colorHighPeak, peakFactor * 0.95);
       }
 
-      // Clearing dirt blending
+      // Clearing dirt blending inside playable valley
       if (clearingFactor > 0) {
         tempColor.lerp(colorClearingDirt, clearingFactor * 0.65);
       }
@@ -119,7 +129,7 @@ export class Terrain {
     const terrainMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true,
       flatShading: true,
-      roughness: 0.82,
+      roughness: 0.84,
       metalness: 0.05,
     });
 
@@ -129,16 +139,14 @@ export class Terrain {
     this.mesh.name = 'TerrainMesh';
     this.scene.add(this.mesh);
 
-    // Create stylized low-poly shallow water / creek stream
+    // Create shallow river water stream in valley
     this.createRiverWater();
   }
 
   createRiverWater() {
-    // Stylized translucent water plane with soft ripples
-    const waterGeom = new THREE.PlaneGeometry(28, 140, 16, 40);
+    const waterGeom = new THREE.PlaneGeometry(28, 160, 16, 40);
     waterGeom.rotateX(-Math.PI / 2);
 
-    // Bend water slightly to follow the river channel
     const pos = waterGeom.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);

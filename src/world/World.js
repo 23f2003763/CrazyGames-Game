@@ -7,6 +7,8 @@ import { PropFactory } from './PropFactory.js';
 /**
  * World: Orchestrates the terrain, road network, environmental props,
  * foliage, and reserved clearing zones.
+ * Step 1.1: Populates dense perimeter mountain forests and rock bluffs
+ * ensuring total scenic immersion with zero visible boundaries.
  */
 export class World {
   constructor(scene) {
@@ -25,10 +27,10 @@ export class World {
   spawnEnvironmentalProps() {
     const dummy = new THREE.Object3D();
 
-    // 1. DENSE PERIMETER FOREST & INTERIOR TREE CLUSTERS
+    // 1. DENSE PERIMETER RIDGE & INTERIOR FOREST
     this.populateTrees(dummy);
 
-    // 2. BOULDERS, CLIFF FORMATIONS & RIVERBED ROCKS
+    // 2. CLIFF BLUFFS, MOUNTAIN FORMATIONS & RIVERBED ROCKS
     this.populateRocks(dummy);
 
     // 3. BUSHES & UNDERGROWTH
@@ -37,15 +39,15 @@ export class World {
     // 4. WILDFLOWERS & GRASS TUFTS
     this.populateGroundFoliage(dummy);
 
-    // 5. ROAD DEBRIS, BARRIERS, BARRELS, SIGNS & MILITARY OBSTACLES
+    // 5. ROAD DEBRIS, BARRIERS, BARRELS, SIGNS & FORTIFICATIONS
     this.populateEnvironmentalDebris(dummy);
   }
 
   populateTrees(dummy) {
-    const pineCount = 380;
-    const oakCount = 220;
-    const birchCount = 140;
-    const deadTreeCount = 60;
+    const pineCount = 750;
+    const oakCount = 280;
+    const birchCount = 200;
+    const deadTreeCount = 80;
 
     // Multi-tier Pine Tree Instanced Group
     const pineTrunkMesh = new THREE.InstancedMesh(this.factory.geometries.pineTrunk, this.factory.materials.woodTrunk, pineCount);
@@ -59,20 +61,23 @@ export class World {
     pineT3Mesh.castShadow = true;
 
     let pIdx = 0;
+    // Distribute pine trees across valley copses and dense perimeter mountain slopes (out to distance 240)
     for (let i = 0; i < pineCount * 3 && pIdx < pineCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 10);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 10);
+      const rx = (Math.random() - 0.5) * 440;
+      const rz = (Math.random() - 0.5) * 360;
 
-      if (!this.isValidPropLocation(rx, rz, { minRoadDist: 8, minDirtDist: 4.5, allowInClearing: false, minRiverDist: 4 })) {
+      const isPerimeter = (Math.abs(rx) > 95 || Math.abs(rz) > 75);
+
+      if (!this.isValidPropLocation(rx, rz, { minRoadDist: 8, minDirtDist: 4.5, allowInClearing: false, minRiverDist: 3.5 })) {
         continue;
       }
 
-      // Favor perimeter edges for dense forest walls
-      const edgeWeight = (Math.abs(rx) > 85 || Math.abs(rz) > 65) ? 1.0 : 0.35;
-      if (Math.random() > edgeWeight) continue;
+      // Higher density on outer mountain slopes
+      if (!isPerimeter && Math.random() > 0.35) continue;
 
       const y = getTerrainHeight(rx, rz);
-      const scale = 0.8 + Math.random() * 0.6;
+      // Scale up mountain pine trees slightly for dramatic silhouette
+      const scale = (isPerimeter ? 1.0 + Math.random() * 0.9 : 0.8 + Math.random() * 0.6);
       const rotY = Math.random() * Math.PI * 2;
       const tiltX = (Math.random() - 0.5) * 0.08;
       const tiltZ = (Math.random() - 0.5) * 0.08;
@@ -125,15 +130,15 @@ export class World {
 
     let oIdx = 0;
     for (let i = 0; i < oakCount * 3 && oIdx < oakCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 25);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 25);
+      const rx = (Math.random() - 0.5) * 320;
+      const rz = (Math.random() - 0.5) * 260;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 9, minDirtDist: 5, allowInClearing: false, minRiverDist: 4 })) {
         continue;
       }
 
       const y = getTerrainHeight(rx, rz);
-      const scale = 0.85 + Math.random() * 0.5;
+      const scale = 0.85 + Math.random() * 0.55;
       const rotY = Math.random() * Math.PI * 2;
 
       dummy.position.set(rx, y + 1.5 * scale, rz);
@@ -165,7 +170,7 @@ export class World {
       this.instancedMeshes.push(m);
     });
 
-    // Birch Trees (slender white trunk with autumn/light green canopy)
+    // Birch Trees (slender white trunk with golden-green canopy)
     const birchTrunkMesh = new THREE.InstancedMesh(this.factory.geometries.birchTrunk, this.factory.materials.birchTrunk, birchCount);
     const birchCanopyMesh = new THREE.InstancedMesh(this.factory.geometries.birchCanopy, this.factory.materials.birchFoliage, birchCount);
     birchTrunkMesh.castShadow = true;
@@ -173,15 +178,15 @@ export class World {
 
     let bIdx = 0;
     for (let i = 0; i < birchCount * 3 && bIdx < birchCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 30);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 30);
+      const rx = (Math.random() - 0.5) * 360;
+      const rz = (Math.random() - 0.5) * 280;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 8, minDirtDist: 4, allowInClearing: false, minRiverDist: 3.5 })) {
         continue;
       }
 
       const y = getTerrainHeight(rx, rz);
-      const scale = 0.8 + Math.random() * 0.45;
+      const scale = 0.8 + Math.random() * 0.5;
       const rotY = Math.random() * Math.PI * 2;
 
       dummy.position.set(rx, y + 2.1 * scale, rz);
@@ -211,8 +216,8 @@ export class World {
     deadMesh.castShadow = true;
     let dIdx = 0;
     for (let i = 0; i < deadTreeCount * 4 && dIdx < deadTreeCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 20);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 20);
+      const rx = (Math.random() - 0.5) * 280;
+      const rz = (Math.random() - 0.5) * 220;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 7, minDirtDist: 3.5, allowInClearing: false, minRiverDist: 2 })) {
         continue;
@@ -234,9 +239,9 @@ export class World {
   }
 
   populateRocks(dummy) {
-    const largeRockCount = 80;
-    const medRockCount = 140;
-    const smallRockCount = 200;
+    const largeRockCount = 180;
+    const medRockCount = 200;
+    const smallRockCount = 280;
 
     const largeRockMesh = new THREE.InstancedMesh(this.factory.geometries.boulderLarge, this.factory.materials.rockGrey, largeRockCount);
     const medRockMesh = new THREE.InstancedMesh(this.factory.geometries.boulderMed, this.factory.materials.rockMossy, medRockCount);
@@ -246,22 +251,27 @@ export class World {
     medRockMesh.castShadow = true;
     smallRockMesh.castShadow = true;
 
-    // Large Boulders (Cliffs, perimeter, riverbed bluffs)
+    // Large Mountain Cliff Bluffs & Perimeter Formations
     let lIdx = 0;
     for (let i = 0; i < largeRockCount * 3 && lIdx < largeRockCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 15);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 15);
+      const rx = (Math.random() - 0.5) * 380;
+      const rz = (Math.random() - 0.5) * 300;
+
+      const isPerimeter = (Math.abs(rx) > 90 || Math.abs(rz) > 70);
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 7, minDirtDist: 4, allowInClearing: false, minRiverDist: 1 })) {
         continue;
       }
 
-      const y = getTerrainHeight(rx, rz);
-      const scaleX = 1.0 + Math.random() * 0.8;
-      const scaleY = 0.8 + Math.random() * 0.6;
-      const scaleZ = 1.0 + Math.random() * 0.8;
+      if (!isPerimeter && Math.random() > 0.4) continue;
 
-      dummy.position.set(rx, y + (scaleY * 0.8), rz);
+      const y = getTerrainHeight(rx, rz);
+      const scaleMultiplier = isPerimeter ? 1.8 + Math.random() * 1.6 : 1.0 + Math.random() * 0.8;
+      const scaleX = scaleMultiplier * (0.9 + Math.random() * 0.3);
+      const scaleY = scaleMultiplier * (0.8 + Math.random() * 0.6);
+      const scaleZ = scaleMultiplier * (0.9 + Math.random() * 0.3);
+
+      dummy.position.set(rx, y + (scaleY * 0.7), rz);
       dummy.rotation.set(Math.random() * 0.5, Math.random() * Math.PI * 2, Math.random() * 0.5);
       dummy.scale.set(scaleX, scaleY, scaleZ);
       dummy.updateMatrix();
@@ -272,11 +282,11 @@ export class World {
     this.scene.add(largeRockMesh);
     this.instancedMeshes.push(largeRockMesh);
 
-    // Medium Rocks (Riverbed, roadside shoulders, hills)
+    // Medium Rocks
     let mIdx = 0;
     for (let i = 0; i < medRockCount * 3 && mIdx < medRockCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 15);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 15);
+      const rx = (Math.random() - 0.5) * 280;
+      const rz = (Math.random() - 0.5) * 220;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 5.5, minDirtDist: 3, allowInClearing: false, minRiverDist: 0.5 })) {
         continue;
@@ -299,8 +309,8 @@ export class World {
     // Small Scatter Rocks
     let sIdx = 0;
     for (let i = 0; i < smallRockCount * 2 && sIdx < smallRockCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 10);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 10);
+      const rx = (Math.random() - 0.5) * 260;
+      const rz = (Math.random() - 0.5) * 200;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 4, minDirtDist: 2, allowInClearing: true, minRiverDist: 0 })) {
         continue;
@@ -322,7 +332,7 @@ export class World {
   }
 
   populateBushes(dummy) {
-    const bushCount = 260;
+    const bushCount = 280;
     const greenBushMesh = new THREE.InstancedMesh(this.factory.geometries.bushRound, this.factory.materials.bushGreen, bushCount);
     const autumnBushMesh = new THREE.InstancedMesh(this.factory.geometries.bushCluster, this.factory.materials.bushAutumn, bushCount);
 
@@ -333,8 +343,8 @@ export class World {
     let aIdx = 0;
 
     for (let i = 0; i < bushCount * 3 && (gIdx < bushCount || aIdx < bushCount); i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 15);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 15);
+      const rx = (Math.random() - 0.5) * 280;
+      const rz = (Math.random() - 0.5) * 220;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 6.5, minDirtDist: 3.5, allowInClearing: false, minRiverDist: 2 })) {
         continue;
@@ -369,8 +379,8 @@ export class World {
   }
 
   populateGroundFoliage(dummy) {
-    const grassCount = 450;
-    const flowerCount = 180;
+    const grassCount = 500;
+    const flowerCount = 200;
 
     const grassMesh = new THREE.InstancedMesh(this.factory.geometries.grassBlade, this.factory.materials.grassTuft, grassCount);
     const flowerGoldMesh = new THREE.InstancedMesh(this.factory.geometries.flowerHead, this.factory.materials.flowerPetals, flowerCount);
@@ -381,8 +391,8 @@ export class World {
     let fcIdx = 0;
 
     for (let i = 0; i < grassCount * 2 && grIdx < grassCount; i++) {
-      const rx = (Math.random() - 0.5) * (MAP_CONFIG.width - 20);
-      const rz = (Math.random() - 0.5) * (MAP_CONFIG.depth - 20);
+      const rx = (Math.random() - 0.5) * 260;
+      const rz = (Math.random() - 0.5) * 200;
 
       if (!this.isValidPropLocation(rx, rz, { minRoadDist: 5.5, minDirtDist: 2.8, allowInClearing: true, minRiverDist: 1 })) {
         continue;
@@ -397,7 +407,6 @@ export class World {
       dummy.updateMatrix();
       grassMesh.setMatrixAt(grIdx++, dummy.matrix);
 
-      // Occasional wildflower on top of grass
       if (Math.random() > 0.65) {
         dummy.position.set(rx, y + 0.85 * scale, rz);
         dummy.scale.setScalar(0.7 + Math.random() * 0.5);
@@ -426,13 +435,12 @@ export class World {
   }
 
   populateEnvironmentalDebris(dummy) {
-    // 1. Concrete Highway Jersey Barriers (along sharp road bends & overlook)
+    // 1. Concrete Highway Jersey Barriers
     const barrierCount = 35;
     const barrierMesh = new THREE.InstancedMesh(this.factory.geometries.jerseyBarrier, this.factory.materials.concreteBarrier, barrierCount);
     barrierMesh.castShadow = true;
     barrierMesh.receiveShadow = true;
 
-    // Explicit barrier clusters along the road edges
     const barrierLocs = [
       // Starting overlook
       { x: -108, z: 82, rotY: 0.7 },
@@ -474,7 +482,7 @@ export class World {
     this.scene.add(barrierMesh);
     this.instancedMeshes.push(barrierMesh);
 
-    // 2. Barrels (Yellow hazard, Red flammable, Blue supply)
+    // 2. Barrels
     const barrelCount = 40;
     const barrelYMesh = new THREE.InstancedMesh(this.factory.geometries.metalBarrel, this.factory.materials.barrelYellow, barrelCount);
     const barrelRMesh = new THREE.InstancedMesh(this.factory.geometries.metalBarrel, this.factory.materials.barrelRed, barrelCount);
@@ -486,17 +494,11 @@ export class World {
     });
 
     const barrelClusters = [
-      // Gas Station clearing edge
       { cx: -60, cz: -30, count: 6 },
-      // Checkpoint clearing
       { cx: 95, cz: -65, count: 8 },
-      // Roadside breakdown
       { cx: -15, cz: 35, count: 4 },
-      // Overlook area
       { cx: -98, cz: 65, count: 4 },
-      // Survivor camp perimeter
       { cx: 30, cz: -55, count: 4 },
-      // Farm edge
       { cx: 70, cz: 40, count: 3 },
     ];
 
@@ -540,7 +542,7 @@ export class World {
       this.instancedMeshes.push(m);
     });
 
-    // 3. Wooden Crates & Pallets
+    // 3. Wooden Crates
     const crateCount = 30;
     const crateMesh = new THREE.InstancedMesh(this.factory.geometries.woodenCrate, this.factory.materials.woodenCrate, crateCount);
     crateMesh.castShadow = true;
@@ -566,7 +568,7 @@ export class World {
     this.scene.add(crateMesh);
     this.instancedMeshes.push(crateMesh);
 
-    // 4. Tires & Tire Stacks
+    // 4. Tires
     const tireCount = 35;
     const tireMesh = new THREE.InstancedMesh(this.factory.geometries.tire, this.factory.materials.tireRubber, tireCount);
     tireMesh.castShadow = true;
@@ -579,7 +581,6 @@ export class World {
       const tz = pt.z + (Math.random() - 0.5) * 12;
       const th = getTerrainHeight(tx, tz);
 
-      // Stack of 2-3 tires
       const stackHeight = Math.floor(Math.random() * 3) + 1;
       for (let s = 0; s < stackHeight && tIdx < tireCount; s++) {
         dummy.position.set(tx + (s * 0.05), th + 0.2 + s * 0.4, tz);
@@ -594,13 +595,13 @@ export class World {
     this.scene.add(tireMesh);
     this.instancedMeshes.push(tireMesh);
 
-    // 5. Road Signs & Bent Highway Warning Posts
+    // 5. Road Signs
     this.createRoadSigns(dummy);
 
-    // 6. Farm Wooden Fences & Posts (around Overgrown Farm clearing)
+    // 6. Farm Fences
     this.createFarmFencing(dummy);
 
-    // 7. Checkpoint Sandbag Bunkers
+    // 7. Checkpoint Sandbag Fortifications
     this.createSandbagFortifications(dummy);
   }
 
@@ -609,19 +610,12 @@ export class World {
     signGroup.name = 'RoadSigns';
 
     const signLocations = [
-      // Starting Overlook: Warning Route sign
       { x: -96, z: 62, rotY: 0.5, type: 'diamond', tilt: 0.12 },
-      // Gas station turnoff sign
       { x: -58, z: 42, rotY: 1.1, type: 'rect', tilt: -0.08 },
-      // Bridge hazard sign
       { x: -22, z: 28, rotY: 0.4, type: 'diamond', tilt: 0.2 },
-      // Survivor camp direction sign
       { x: 22, z: 6, rotY: 1.8, type: 'rect', tilt: 0.05 },
-      // Farm turnoff sign
       { x: 48, z: -12, rotY: -0.8, type: 'rect', tilt: -0.15 },
-      // Military Checkpoint "HALT / QUARANTINE" sign
       { x: 86, z: -58, rotY: 1.0, type: 'rect', tilt: 0.08 },
-      // Far highway exit sign
       { x: 118, z: -82, rotY: -0.7, type: 'diamond', tilt: 0.25 },
     ];
 
@@ -650,21 +644,18 @@ export class World {
     const fenceGroup = new THREE.Group();
     fenceGroup.name = 'FarmFences';
 
-    // Fence perimeter around south-east farm meadow
     const farmOriginX = 78;
     const farmOriginZ = 48;
     const fencePosts = 16;
     const fenceRadius = 24;
 
     for (let i = 0; i < fencePosts; i++) {
-      // Leave entrance opening towards dirt path
       if (i >= 12 && i <= 14) continue;
 
       const angle = (i / fencePosts) * Math.PI * 2;
       const fx = farmOriginX + Math.cos(angle) * fenceRadius;
       const fz = farmOriginZ + Math.sin(angle) * fenceRadius;
 
-      // Occasional broken fence post
       if (Math.random() > 0.85) continue;
 
       const fy = getTerrainHeight(fx, fz);
@@ -674,7 +665,6 @@ export class World {
       post.castShadow = true;
       fenceGroup.add(post);
 
-      // Horizontal rail connecting posts
       if (i < fencePosts - 1 && Math.random() > 0.25) {
         const nextAngle = ((i + 1) / fencePosts) * Math.PI * 2;
         const nfx = farmOriginX + Math.cos(nextAngle) * fenceRadius;
@@ -726,10 +716,6 @@ export class World {
     this.scene.add(sandbagGroup);
   }
 
-  /**
-   * Helper to check whether a proposed prop position is valid
-   * (e.g. not overlapping main road, dirt trails, or clearing interiors)
-   */
   isValidPropLocation(x, z, opts = {}) {
     const {
       minRoadDist = 7,
@@ -738,17 +724,14 @@ export class World {
       minRiverDist = 2
     } = opts;
 
-    // Check road distance
     const roadInfo = getClosestPointOnSpline(roadSpline, x, z, 30);
     if (roadInfo.distance < minRoadDist) return false;
 
-    // Check dirt path distance
     for (const dSpline of dirtSplines) {
       const dInfo = getClosestPointOnSpline(dSpline, x, z, 20);
       if (dInfo.distance < minDirtDist) return false;
     }
 
-    // Check clearings
     if (!allowInClearing) {
       for (const cl of CLEARINGS) {
         const dist = Math.hypot(x - cl.x, z - cl.z);
@@ -756,9 +739,8 @@ export class World {
       }
     }
 
-    // Check river water depth
     const riverDist = Math.abs(x - (-8 + Math.sin(z * 0.04) * 12));
-    if (riverDist < minRiverDist) return false;
+    if (riverDist < minRiverDist && Math.abs(z) < 110) return false;
 
     return true;
   }

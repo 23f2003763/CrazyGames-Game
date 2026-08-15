@@ -3,8 +3,8 @@ import { CLEARINGS } from '../world/MapData.js';
 
 /**
  * Fixed Isometric-Style Camera Controller (45-55 degree downward pitch)
- * Provides butter-smooth panning (WASD / drag), zooming (wheel), and POI navigation
- * to effortlessly inspect and navigate the large continuous world.
+ * Step 1.1: Precision camera bounds clamping and zoom limits ensuring the
+ * natural mountain perimeter fully envelops the viewport in all directions.
  */
 export class IsometricCamera {
   constructor(domElement) {
@@ -13,9 +13,9 @@ export class IsometricCamera {
     // Isometric angle parameters
     this.pitch = THREE.MathUtils.degToRad(50);  // 50 degrees downward pitch
     this.yaw = THREE.MathUtils.degToRad(45);    // 45 degrees diagonal isometric angle
-    this.distance = 68;                        // Isometric distance
-    this.minDistance = 25;
-    this.maxDistance = 140;
+    this.distance = 65;                        // Standard isometric distance
+    this.minDistance = 24;
+    this.maxDistance = 88;                     // Balanced max zoom to preserve scenery immersion
 
     // Camera target position in world space
     this.target = new THREE.Vector3(-95, 2.5, 70); // Starts at Road Head Overlook
@@ -23,7 +23,7 @@ export class IsometricCamera {
 
     // Perspective Camera setup
     const aspect = window.innerWidth / window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(42, aspect, 0.5, 1000);
+    this.camera = new THREE.PerspectiveCamera(42, aspect, 0.5, 1200);
     this.updateCameraTransform();
 
     // Interaction state
@@ -107,9 +107,9 @@ export class IsometricCamera {
       this.desiredTarget.x += moveX;
       this.desiredTarget.z += moveZ;
 
-      // Clamp within map bounds
-      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -130, 130);
-      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -100, 100);
+      // Clamp within playable bounds
+      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
+      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
     });
 
     window.addEventListener('mouseup', () => {
@@ -145,6 +145,9 @@ export class IsometricCamera {
 
         this.desiredTarget.x += moveX;
         this.desiredTarget.z += moveZ;
+
+        this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
+        this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
       }
     }, { passive: true });
 
@@ -186,16 +189,15 @@ export class IsometricCamera {
       const normR = moveRight / len;
 
       const speed = this.panSpeed * (this.distance / 65) * deltaTime;
-      // Rotate by isometric yaw angle
       const dx = (normR * Math.cos(this.yaw) + normF * Math.sin(this.yaw)) * speed;
       const dz = (-normR * Math.sin(this.yaw) + normF * Math.cos(this.yaw)) * speed;
 
       this.desiredTarget.x += dx;
       this.desiredTarget.z += dz;
 
-      // Clamp within map bounds
-      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -130, 130);
-      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -100, 100);
+      // Clamp within playable bounds
+      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
+      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
     }
 
     // Smooth lerp to desired target
