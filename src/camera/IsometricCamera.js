@@ -55,8 +55,10 @@ export class IsometricCamera {
     if (cl) {
       this.desiredTarget.set(cl.x, 2.0, cl.z);
       // Closer cinematic landmark framing for key POI hubs
-      if (clearingId === 'start' || clearingId === 'gasStation' || clearingId === 'checkpoint') {
-        this.distance = 54;
+      if (clearingId === 'start' || clearingId === 'gasStation') {
+        this.distance = 52;
+      } else if (clearingId === 'checkpoint') {
+        this.distance = 64; // Frame expanded 2x horde combat arena & all 3 attack lanes
       } else {
         this.distance = 65;
       }

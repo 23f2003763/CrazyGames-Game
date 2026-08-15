@@ -114,7 +114,7 @@ export const CLEARINGS = [
     name: '5. Military Checkpoint',
     x: 100,
     z: -72,
-    radius: 30,
+    radius: 36,
     description: 'Outpost Omega - Fortified military horde combat arena with command bunker, 2 guard towers, and wrecked APC',
     targetCameraPos: new THREE.Vector3(100, 2.0, -72),
   },
