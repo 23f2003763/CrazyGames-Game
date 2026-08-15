@@ -5,6 +5,7 @@ import { Terrain } from './Terrain.js';
 import { RoadSystem } from './RoadSystem.js';
 import { PropFactory } from './PropFactory.js';
 import { AuthoredDressing } from './AuthoredDressing.js';
+import { MilitaryArenaGround } from './MilitaryArenaGround.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
@@ -49,7 +50,23 @@ export class World {
       model.rotation.y = -Math.PI * 0.28;
       model.scale.set(1.15, 1.15, 1.15); // Chunky landmark scale
 
+      const oldGroundPrefixes = [
+        'Ground_',
+        'Zone',
+        'Combat_Chunk_',
+        'BlastCrater_',
+        'Highway_YellowStripe_'
+      ];
+
       model.traverse((child) => {
+        if (
+          oldGroundPrefixes.some(prefix =>
+            child.name.startsWith(prefix)
+          )
+        ) {
+          child.visible = false;
+        }
+
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
@@ -69,6 +86,10 @@ export class World {
       });
 
       this.scene.add(model);
+      if (!this.militaryArenaGround) {
+        this.militaryArenaGround =
+          new MilitaryArenaGround(this.scene);
+      }
       console.log('Military Checkpoint "OUTPOST OMEGA" loaded successfully at (100, -72)');
     }, undefined, (error) => {
       console.error('Error loading military checkpoint GLB:', error);
