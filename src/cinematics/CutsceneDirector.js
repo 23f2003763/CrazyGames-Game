@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { campaignFrame } from '../campaign/CampaignFrame.js';
 
 /**
- * CutsceneDirector: Smooth cinematic camera sequencing, camera interpolation, and subtitle cues.
+ * CutsceneDirector: Multi-shot cinematic camera sequencing, camera interpolation,
+ * and subtitle synchronization.
  */
 export class CutsceneDirector {
   constructor(cameraController, dialogueUI) {
@@ -9,12 +11,15 @@ export class CutsceneDirector {
     this.dialogueUI = dialogueUI;
 
     this.isPlaying = false;
+    this.shotQueue = [];
     this.currentShot = null;
     this.shotTimer = 0;
-    this.onShotComplete = null;
+    this.onSequenceComplete = null;
 
     this.startCamPos = new THREE.Vector3();
     this.startTargetPos = new THREE.Vector3();
+    this.endCamPos = new THREE.Vector3();
+    this.endTargetPos = new THREE.Vector3();
 
     this.bindInputs();
   }
@@ -27,40 +32,77 @@ export class CutsceneDirector {
     });
   }
 
-  playShot(config, onComplete) {
-    // config: { targetPos, camOffset, duration, subtitle: { speaker, text }, onStart }
+  playSequence(shots, onComplete) {
     this.isPlaying = true;
-    this.currentShot = config;
-    this.shotTimer = 0;
-    this.duration = config.duration || 3.0;
-    this.onShotComplete = onComplete;
+    this.shotQueue = [...shots];
+    this.onSequenceComplete = onComplete;
+    this.nextShot();
+  }
 
-    // Capture starting camera state
+  playShot(shotConfig, onComplete) {
+    this.playSequence([shotConfig], onComplete);
+  }
+
+  nextShot() {
+    if (this.shotQueue.length === 0) {
+      this.finishSequence();
+      return;
+    }
+
+    const shot = this.shotQueue.shift();
+    this.currentShot = shot;
+    this.shotTimer = 0;
+    this.duration = shot.duration || 2.5;
+
     this.startCamPos.copy(this.cameraController.camera.position);
     this.startTargetPos.copy(this.cameraController.target);
 
-    // Compute target end states
-    this.endTargetPos = config.targetPos.clone();
-    this.endCamPos = config.camOffset 
-      ? config.targetPos.clone().add(config.camOffset)
-      : config.targetPos.clone().add(new THREE.Vector3(14, 18, 14));
+    this.endTargetPos = shot.targetPos.clone();
+    this.endCamPos = shot.camOffset
+      ? shot.targetPos.clone().add(shot.camOffset)
+      : shot.targetPos.clone().add(new THREE.Vector3(12, 16, 12));
 
-    if (config.onStart) {
-      config.onStart();
-    }
-
-    if (config.subtitle && this.dialogueUI) {
-      this.dialogueUI.showRadioSubtitle(config.subtitle.speaker, config.subtitle.text, this.duration * 1000);
+    if (shot.subtitle && this.dialogueUI) {
+      this.dialogueUI.showRadioSubtitle(shot.subtitle.speaker, shot.subtitle.text, this.duration * 1000);
     }
   }
 
   skip() {
     if (!this.isPlaying) return;
+    this.shotQueue = [];
+    this.finishSequence();
+  }
+
+  finishSequence() {
     this.isPlaying = false;
-    const cb = this.onShotComplete;
     this.currentShot = null;
-    this.onShotComplete = null;
+    const cb = this.onSequenceComplete;
+    this.onSequenceComplete = null;
     if (cb) cb();
+  }
+
+  playOpeningSequence(onComplete) {
+    const mastPos = campaignFrame.requireAnchor('relay_mast');
+    const consolePos = campaignFrame.requireAnchor('signal_console');
+    const hubPos = campaignFrame.requireAnchor('mara_hub');
+
+    this.playSequence([
+      {
+        targetPos: mastPos,
+        duration: 1.6,
+        subtitle: { speaker: 'MARA', text: 'Telemetry alert... Relay antenna picking up unexpected frequency.' }
+      },
+      {
+        targetPos: consolePos,
+        duration: 1.4,
+        subtitle: { speaker: 'MARA', text: 'Console just powered on with an incoming packet.' }
+      },
+      {
+        targetPos: hubPos,
+        duration: 1.5,
+        subtitle: { speaker: 'MARA', text: 'Ryder. I just got something impossible.' }
+      }
+    ], onComplete);
   }
 
   update(dt) {
@@ -68,18 +110,13 @@ export class CutsceneDirector {
 
     this.shotTimer += dt;
     const rawT = THREE.MathUtils.clamp(this.shotTimer / this.duration, 0, 1);
-    // Smooth cosine ease in/out
-    const t = 0.5 - 0.5 * Math.cos(rawT * Math.PI);
+    const t = 0.5 - 0.5 * Math.cos(rawT * Math.PI); // Smooth cosine ease
 
     this.cameraController.target.lerpVectors(this.startTargetPos, this.endTargetPos, t);
     this.cameraController.camera.position.lerpVectors(this.startCamPos, this.endCamPos, t);
 
     if (this.shotTimer >= this.duration) {
-      this.isPlaying = false;
-      const cb = this.onShotComplete;
-      this.currentShot = null;
-      this.onShotComplete = null;
-      if (cb) cb();
+      this.nextShot();
     }
   }
 }

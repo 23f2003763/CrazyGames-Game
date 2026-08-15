@@ -1,13 +1,15 @@
 import * as THREE from 'three';
+import { ArcTrail } from './ArcTrail.js';
 import { CorridorFenceSystem } from './CorridorFenceSystem.js';
 import { BoundaryForest } from './BoundaryForest.js';
 import { SectorManager } from './SectorManager.js';
 import { campaignFrame } from './CampaignFrame.js';
+import { campaignPath } from './CampaignPath.js';
 import { proceduralTextures } from '../rendering/ProceduralTextures.js';
 
 /**
- * CampaignWorld: Flat, polished campaign terrain corridor orientated along
- * the screen-up forward vector (-0.707, 0, -0.707).
+ * CampaignWorld: High-quality campaign environment with muddy Arc trail ribbon,
+ * continuous electric fence perimeter, dense boundary forest, and authored sectors.
  */
 export class CampaignWorld {
   constructor(scene, collisionRegistry, interactionSystem, lootSystem, npcSystem, cutsceneDirector) {
@@ -21,33 +23,39 @@ export class CampaignWorld {
     // 1. Terrain Mesh
     this.buildCampaignTerrain();
 
-    // 2. Continuous Electric Security Fence System
-    this.fenceSystem = new CorridorFenceSystem(this.scene, this.collision, null);
+    // 2. Authored Muddy Arc Trail Ribbon
+    this.trail = new ArcTrail(this.scene);
+    console.assert(this.trail, 'Campaign trail missing');
 
-    // 3. Dense Boundary Forest
+    // 3. Continuous Electric Security Fence System
+    this.fenceSystem = new CorridorFenceSystem(this.scene, this.collision);
+
+    // 4. Dense Boundary Forest
     this.boundaryForest = new BoundaryForest(this.scene);
 
-    // 4. Sector & Entity Manager
+    // 5. Sector & Entity Manager
     this.sectorManager = new SectorManager(
       this.scene, 
+      this.collision,
       interactionSystem, 
       lootSystem, 
       npcSystem,
-      cutsceneDirector
+      cutsceneDirector,
+      this.fenceSystem
     );
     this.sectorManager.loadAllAssetsAndBuild();
   }
 
   buildCampaignTerrain() {
-    const size = 320; // 320x320m ground plane
+    const size = 340; // 340x340m ground plane
     const geo = new THREE.PlaneGeometry(size, size, 80, 80);
     geo.rotateX(-Math.PI / 2);
 
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
 
-    const cLush = new THREE.Color(0x3e5e2e);
-    const cTrail = new THREE.Color(0x565045);
+    const cLush = new THREE.Color(0x324d26);
+    const cTrailEarth = new THREE.Color(0x484234);
     const tempCol = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
@@ -57,14 +65,16 @@ export class CampaignWorld {
       let h = this.sampleHeight(x, z);
       pos.setY(i, h);
 
-      // Vertex color gradient based on local lateral distance
-      const local = campaignFrame.toLocal(new THREE.Vector3(x, 0, z));
-      const distFromCenter = Math.abs(local.x);
+      // Distance from closest point on CampaignPath
+      const worldP = new THREE.Vector3(x, 0, z);
+      const t = campaignPath.getClosestProgress(worldP);
+      const pathP = campaignPath.getWorldPointAt(t);
+      const distFromPath = Math.sqrt((x - pathP.x) * (x - pathP.x) + (z - pathP.z) * (z - pathP.z));
 
-      if (distFromCenter < 6.0) {
-        tempCol.copy(cTrail);
+      if (distFromPath < 6.0) {
+        tempCol.copy(cTrailEarth);
       } else {
-        tempCol.lerpColors(cTrail, cLush, Math.min(1.0, (distFromCenter - 6.0) / 18.0));
+        tempCol.lerpColors(cTrailEarth, cLush, Math.min(1.0, (distFromPath - 6.0) / 16.0));
       }
 
       colors[i * 3]     = tempCol.r;
@@ -76,15 +86,15 @@ export class CampaignWorld {
     geo.computeVertexNormals();
 
     const grassMaps = proceduralTextures.getGrassTexture(256);
-    grassMaps.diffuse.repeat.set(30, 30);
-    grassMaps.roughness.repeat.set(30, 30);
+    grassMaps.diffuse.repeat.set(32, 32);
+    grassMaps.roughness.repeat.set(32, 32);
 
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       map: grassMaps.diffuse,
       roughnessMap: grassMaps.roughness,
-      roughness: 0.88,
-      metalness: 0.03,
+      roughness: 0.90,
+      metalness: 0.02,
       flatShading: true,
     });
 
@@ -97,17 +107,18 @@ export class CampaignWorld {
   }
 
   sampleHeight(x, z) {
-    const local = campaignFrame.toLocal(new THREE.Vector3(x, 0, z));
-    const absX = Math.abs(local.x);
+    const worldP = new THREE.Vector3(x, 0, z);
+    const t = campaignPath.getClosestProgress(worldP);
+    const pathP = campaignPath.getWorldPointAt(t);
+    const distFromPath = Math.sqrt((x - pathP.x) * (x - pathP.x) + (z - pathP.z) * (z - pathP.z));
 
-    if (absX <= 24.0) {
-      // Flat corridor with subtle organic micro-variation (< 0.08m)
-      return Math.sin(x * 0.15 + z * 0.1) * 0.04;
+    if (distFromPath <= 22.0) {
+      return 0.0;
     }
 
-    // Outer scenic ridge rise beyond electric fences
-    const excess = absX - 24.0;
-    return Math.pow(Math.min(excess / 24.0, 1.6), 2.0) * 14.0;
+    // Outer natural rise beyond fence lines
+    const excess = distFromPath - 22.0;
+    return Math.pow(Math.min(excess / 24.0, 1.8), 2.0) * 14.0;
   }
 
   update(playerPos) {

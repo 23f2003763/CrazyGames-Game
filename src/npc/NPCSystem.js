@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { NPC } from './NPC.js';
-import { DialogueUI } from '../ui/DialogueUI.js';
 import { missionEvents } from '../missions/MissionEvents.js';
 
 /**
  * NPCSystem: Orchestrates survivor NPCs, proximity triggers, and dialogue sequences.
  */
 export class NPCSystem {
-  constructor(scene, interactionSystem) {
+  constructor(scene, interactionSystem, dialogueUI) {
     this.scene = scene;
     this.interactionSystem = interactionSystem;
-    this.dialogueUI = new DialogueUI();
+    this.dialogueUI = dialogueUI;
     this.npcs = new Map();
   }
 
@@ -20,11 +19,10 @@ export class NPCSystem {
     parentGroup.add(npc.group);
     this.npcs.set(config.id, npc);
 
-    // Register with InteractionSystem
     this.interactionSystem.registerInteractable({
       id: config.id,
       position: new THREE.Vector3(config.x, config.y, config.z),
-      radius: 2.8,
+      radius: 3.0,
       text: `Talk to ${config.name}`,
       promptOffsetY: 2.1,
       onInteract: () => this.talkTo(config.id)
@@ -32,14 +30,28 @@ export class NPCSystem {
   }
 
   talkTo(npcId) {
+    const npc = this.npcs.get(npcId);
+
     if (npcId === 'mara') {
-      this.dialogueUI.show(
-        'MARA',
-        "Road's gone quiet. Grab the supply kit before you head out.",
-        () => {
+      const dialogueLines = [
+        { speaker: 'MARA', text: "That signal crossed a channel that's been dead for nine years." },
+        { speaker: 'RYDER', text: "Machine signal?" },
+        { speaker: 'MARA', text: "No. That's the problem. It authenticated as human." },
+        { speaker: 'RYDER', text: "Where?" },
+        { speaker: 'MARA', text: "North perimeter. Follow the trace." }
+      ];
+
+      let lineIdx = 0;
+      const showNextLine = () => {
+        if (lineIdx < dialogueLines.length) {
+          const line = dialogueLines[lineIdx++];
+          this.dialogueUI.showModalDialogue(line.speaker, line.text, showNextLine);
+        } else {
           missionEvents.emit('npcTalked', 'mara');
         }
-      );
+      };
+
+      showNextLine();
     }
   }
 

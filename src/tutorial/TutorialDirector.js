@@ -4,7 +4,8 @@ import { campaignFrame } from '../campaign/CampaignFrame.js';
 import { Damageable } from '../combat/Damageable.js';
 
 /**
- * TutorialDirector: 45-60s calibration yard tutorial teaching Move, Dodge, and Arc Caster aim & fire.
+ * TutorialDirector: 45-60s calibration yard tutorial.
+ * Teaches Move, Dodge, and Arc Caster aim & fire on 3 visible standalone target coils.
  */
 export class TutorialDirector {
   constructor(scene, player, weaponSystem, combatSystem, dialogueUI, audioSystem, onCompleteCallback) {
@@ -71,13 +72,12 @@ export class TutorialDirector {
 
   loadAssets() {
     const loader = new GLTFLoader();
-    loader.load('/models/world/arc_props.glb', (gltf) => {
-      gltf.scene.traverse((child) => {
-        if (child.name === 'Arc_Calibration_Coil') {
-          this.coilModel = child;
-        }
-      });
+    loader.load('/models/tutorial/arc_calibration_coil.glb', (gltf) => {
+      this.coilModel = gltf.scene;
+      console.log('[TUTORIAL] Arc Calibration Coil asset loaded successfully.');
       this.initStep1();
+    }, undefined, (err) => {
+      console.error('[TUTORIAL] Failed to load arc_calibration_coil.glb:', err);
     });
   }
 
@@ -91,7 +91,7 @@ export class TutorialDirector {
 
     const geo = new THREE.RingGeometry(0.5, 0.8, 24);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+    const mat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
 
     pulsePositions.forEach((pos, idx) => {
       const ring = new THREE.Mesh(geo, mat.clone());
@@ -107,9 +107,9 @@ export class TutorialDirector {
     this.subEl.innerHTML = 'Press <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">SPACE</span> to perform an Arc Evade roll';
 
     // Harmless scanner beam
-    const geo = new THREE.PlaneGeometry(16, 0.3);
+    const geo = new THREE.PlaneGeometry(16, 0.4);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xff3366, transparent: true, opacity: 0.5 });
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff3366, transparent: true, opacity: 0.55 });
     this.scannerMesh = new THREE.Mesh(geo, mat);
     const centerPos = campaignFrame.getAnchorWorld('tutorial_pulse_2');
     this.scannerMesh.position.set(centerPos.x, 0.06, centerPos.z);
@@ -132,16 +132,21 @@ export class TutorialDirector {
     }
 
     this.titleEl.textContent = 'CALIBRATION: ARC CASTER';
-    this.subEl.innerHTML = 'Aim with <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">MOUSE</span> & Hold <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">LMB</span> to fire and destroy the 3 Arc Pylons';
+    this.subEl.innerHTML = 'Aim with <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">MOUSE</span> & Hold <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">LMB</span> to destroy the 3 Calibration Pylons';
 
-    // Spawn 3 stationary training coils
+    // Spawn 3 standalone calibration coils
     ['target_coil_1', 'target_coil_2', 'target_coil_3'].forEach((anchorName) => {
       this.spawnCalibrationCoil(anchorName);
     });
+
+    console.assert(this.coils.length === 3, 'Tutorial coils failed to spawn');
   }
 
   spawnCalibrationCoil(anchorName) {
-    if (!this.coilModel) return;
+    if (!this.coilModel) {
+      console.error('[TUTORIAL] Coil model not ready when entering Step 3');
+      return;
+    }
 
     const coil = this.coilModel.clone(true);
     const pos = campaignFrame.getAnchorWorld(anchorName);
@@ -158,11 +163,21 @@ export class TutorialDirector {
 
     const coilData = {
       position: pos,
-      radius: 0.9,
+      radius: 0.95,
       mesh: coil,
       damageable: new Damageable({
-        maxHealth: 40,
+        maxHealth: 65,
         faction: 'prop',
+        onDamaged: () => {
+          // Hit flash
+          coil.traverse((child) => {
+            if (child.isMesh && child.material) {
+              const prevMat = child.material;
+              child.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+              setTimeout(() => { child.material = prevMat; }, 50);
+            }
+          });
+        },
         onKilled: () => {
           this.handleCoilDestroyed(coilData);
         }
@@ -212,7 +227,6 @@ export class TutorialDirector {
   skipTutorial() {
     if (this.isCompleted) return;
 
-    // Cleanup any spawned tutorial meshes
     this.pulseMeshes.forEach(p => this.scene.remove(p.mesh));
     if (this.scannerMesh) this.scene.remove(this.scannerMesh);
     this.coils.forEach(c => {
@@ -233,9 +247,8 @@ export class TutorialDirector {
     const pPos = this.player.position;
 
     if (this.step === 1) {
-      // Check pulse node contacts
       this.pulseMeshes.forEach((pulse) => {
-        if (!pulse.isHit && pPos.distanceTo(pulse.pos) < 1.1) {
+        if (!pulse.isHit && pPos.distanceTo(pulse.pos) < 1.2) {
           pulse.isHit = true;
           this.scene.remove(pulse.mesh);
           this.pulsesHit++;

@@ -166,7 +166,9 @@ export class PlayerController {
       inputVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw);
       
       this.moveDirection.copy(inputVec);
-      this.targetRotation = Math.atan2(-inputVec.x, -inputVec.z);
+      if (!this.hasFacingOverride) {
+        this.targetRotation = Math.atan2(-inputVec.x, -inputVec.z);
+      }
       
       const targetSpeed = this.keys.shift ? this.sprintSpeed : this.walkSpeed;
       this.state = this.keys.shift ? 'sprint' : 'walk';
@@ -184,7 +186,18 @@ export class PlayerController {
     }
     
     this.player.position.add(this.velocity.clone().multiplyScalar(dt));
-    this.updateRotation(dt * 10);
+    this.updateRotation(dt * 12);
+  }
+
+  setFacingOverride(dir) {
+    if (dir && dir.lengthSq() > 0.001) {
+      this.hasFacingOverride = true;
+      this.targetRotation = Math.atan2(-dir.x, -dir.z);
+    }
+  }
+
+  clearFacingOverride() {
+    this.hasFacingOverride = false;
   }
   
   updateRotation(speed) {

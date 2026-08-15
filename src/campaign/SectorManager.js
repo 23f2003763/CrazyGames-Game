@@ -7,15 +7,17 @@ import { campaignFrame } from './CampaignFrame.js';
 import { missionEvents } from '../missions/MissionEvents.js';
 
 /**
- * SectorManager: Assembles authored sectors using CampaignFrame coordinates.
+ * SectorManager: Assembles authored sectors, props, and solid colliders.
  */
 export class SectorManager {
-  constructor(scene, interactionSystem, lootSystem, npcSystem, cutsceneDirector) {
+  constructor(scene, collisionRegistry, interactionSystem, lootSystem, npcSystem, cutsceneDirector, fenceSystem) {
     this.scene = scene;
+    this.collision = collisionRegistry;
     this.interactionSystem = interactionSystem;
     this.lootSystem = lootSystem;
     this.npcSystem = npcSystem;
     this.cutsceneDirector = cutsceneDirector;
+    this.fenceSystem = fenceSystem;
 
     this.rootGroup = new THREE.Group();
     this.rootGroup.name = 'CampaignSectors_Root';
@@ -29,8 +31,6 @@ export class SectorManager {
     this.isGateOpen = false;
     this.gateDoorL = null;
     this.gateDoorR = null;
-
-    this.onSectorChanged = null;
 
     this.initSectors();
   }
@@ -141,12 +141,20 @@ export class SectorManager {
       });
     }
 
-    // Wire Interactive Terminals for Sector 1
+    // 5. Solid Colliders
+    if (data.colliders && this.collision) {
+      data.colliders.forEach((c) => {
+        const worldPos = campaignFrame.toWorld(c.localX, c.localZ, 0);
+        const baseYaw = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
+        this.collision.addBox(worldPos.x, worldPos.z, c.width, c.depth, baseYaw + (c.rotation || 0), c.id);
+      });
+    }
+
+    // Wire Interactive Terminals
     if (sector.id === 'sector_01_relay') {
       this.wireRelayInteractiveElements(sector.group);
     }
 
-    // Wire Dead Repeater for Sector 3
     if (sector.id === 'sector_03_repeater') {
       this.wireRepeaterInteractiveElements(sector.group);
     }
@@ -211,7 +219,6 @@ export class SectorManager {
   }
 
   wireRelayInteractiveElements(sectorGroup) {
-    // 1. Find gate door roots for opening animation
     setTimeout(() => {
       sectorGroup.traverse((child) => {
         if (child.name === 'GateDoor_L_Root' || child.name === 'GateDoor_L') this.gateDoorL = child;
@@ -219,12 +226,11 @@ export class SectorManager {
       });
     }, 800);
 
-    // 2. Signal Console Interaction (Objective 2)
     const consolePos = campaignFrame.getAnchorWorld('signal_console');
     this.interactionSystem.registerInteractable({
       id: 'signal_console',
       position: consolePos,
-      radius: 2.8,
+      radius: 3.2,
       text: 'Read Signal Telemetry',
       promptOffsetY: 1.4,
       onInteract: () => {
@@ -239,7 +245,11 @@ export class SectorManager {
     if (this.isGateOpen) return;
     this.isGateOpen = true;
 
-    // Trigger short cinematic camera pan to gate
+    // Remove closed-gate collider barrier
+    if (this.fenceSystem) {
+      this.fenceSystem.unlockGate();
+    }
+
     const gatePos = campaignFrame.getAnchorWorld('relay_gate');
     if (this.cutsceneDirector) {
       this.cutsceneDirector.playShot({
@@ -252,7 +262,6 @@ export class SectorManager {
       });
     }
 
-    // Animate gate doors swinging open
     let progress = 0;
     const openInterval = setInterval(() => {
       progress += 0.04;
@@ -267,12 +276,27 @@ export class SectorManager {
     this.interactionSystem.registerInteractable({
       id: 'signal_repeater_console',
       position: repeaterPos,
-      radius: 3.2,
+      radius: 3.5,
       text: 'Insert Signal Shard',
       promptOffsetY: 1.8,
       onInteract: () => {
         this.interactionSystem.unregisterInteractable('signal_repeater_console');
-        missionEvents.emit('objectInteracted', 'signal_repeater_console');
+        
+        // Ending sequence
+        if (this.cutsceneDirector) {
+          this.cutsceneDirector.playShot({
+            targetPos: repeaterPos,
+            duration: 4.0,
+            subtitle: {
+              speaker: 'MARA',
+              text: "Whatever sent it knows we're here."
+            }
+          }, () => {
+            missionEvents.emit('objectInteracted', 'signal_repeater_console');
+          });
+        } else {
+          missionEvents.emit('objectInteracted', 'signal_repeater_console');
+        }
       }
     });
   }
@@ -283,9 +307,6 @@ export class SectorManager {
         if (this.activeSectorId !== id) {
           this.activeSectorId = id;
           sector.activate();
-          if (this.onSectorChanged) {
-            this.onSectorChanged(sector);
-          }
         }
         break;
       }

@@ -11,6 +11,7 @@ import { MovementFX } from './vfx/MovementFX.js';
 
 // Arcfall Protocol Core Systems
 import { campaignFrame } from './campaign/CampaignFrame.js';
+import { campaignPath } from './campaign/CampaignPath.js';
 import { CampaignWorld } from './campaign/CampaignWorld.js';
 import { CutsceneDirector } from './cinematics/CutsceneDirector.js';
 import { TutorialDirector } from './tutorial/TutorialDirector.js';
@@ -21,7 +22,7 @@ import { MissionSystem } from './missions/MissionSystem.js';
 import { InteractionSystem } from './gameplay/InteractionSystem.js';
 import { LootSystem } from './gameplay/LootSystem.js';
 import { NPCSystem } from './npc/NPCSystem.js';
-import { ObjectiveGuidance } from './ui/ObjectiveGuidance.js';
+import { PathGuidance } from './ui/PathGuidance.js';
 import { ObjectiveHUD } from './ui/ObjectiveHUD.js';
 import { CheckpointSystem } from './gameplay/CheckpointSystem.js';
 import { AudioSystem } from './audio/AudioSystem.js';
@@ -48,13 +49,13 @@ class GameApp {
       this.cameraController.camera
     );
 
-    // 4. Core Systems
+    // 4. Core Systems & Single Shared DialogueUI
     this.audioSystem = new AudioSystem();
     this.checkpointSystem = new CheckpointSystem();
     this.dialogueUI = new DialogueUI();
     this.interactionSystem = new InteractionSystem(this.cameraController.camera);
     this.lootSystem = new LootSystem(this.scene, this.interactionSystem, this.audioSystem);
-    this.npcSystem = new NPCSystem(this.scene, this.interactionSystem);
+    this.npcSystem = new NPCSystem(this.scene, this.interactionSystem, this.dialogueUI);
 
     // 5. Cinematics Director
     this.cutsceneDirector = new CutsceneDirector(this.cameraController, this.dialogueUI);
@@ -90,7 +91,7 @@ class GameApp {
     this.playerAnimator = new PlayerAnimator(this.player);
 
     // Spawn Ryder in Calibration Yard facing screen-up (+Z forward)
-    const spawnWorldPos = campaignFrame.getAnchorWorld('player_spawn');
+    const spawnWorldPos = campaignFrame.requireAnchor('player_spawn');
     this.player.position.copy(spawnWorldPos);
     this.player.rotation.y = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
     this.cameraController.setPlayer(this.player);
@@ -101,6 +102,7 @@ class GameApp {
       this.scene, 
       this.cameraController.camera, 
       this.player, 
+      this.playerController,
       this.audioSystem, 
       this.combatSystem
     );
@@ -108,12 +110,13 @@ class GameApp {
       this.scene, 
       this.combatSystem, 
       this.lootSystem, 
-      this.audioSystem
+      this.audioSystem,
+      this.dialogueUI
     );
 
     // 10. Mission Guidance & HUD
     this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
-    this.objectiveGuidance = new ObjectiveGuidance(this.scene, this.cameraController.camera);
+    this.pathGuidance = new PathGuidance(this.scene, this.cameraController.camera);
     this.objectiveHUD = new ObjectiveHUD();
 
     // 11. Tutorial Director (Runs first in Calibration Yard)
@@ -130,13 +133,27 @@ class GameApp {
     // 12. Visual FX & Particles
     this.movementFX = new MovementFX(this.scene);
 
-    // 13. Debug Overlay (F5)
+    // 13. Debug Overlay (F5) & Collision Wireframe Toggle (F7)
     this.debugOverlay = new CampaignDebugOverlay(
       null,
       this.missionSystem,
       this.world.sectorManager,
       this.player
     );
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'F7') {
+        this.collision.toggleDebug(undefined, this.player);
+      }
+    });
+
+    // Development Assertions
+    setTimeout(() => {
+      console.assert(this.world.trail, 'Campaign trail missing');
+      console.assert(this.world.fenceSystem?.group.children.length > 20, 'Fence generation failed');
+      console.assert(this.collision.colliders.length > 10, 'Campaign colliders missing');
+      console.log(`[DEV CHECK] Setup verified: ${this.collision.colliders.length} colliders registered.`);
+    }, 1200);
 
     this.clock = new THREE.Clock();
     this.animate = this.animate.bind(this);
@@ -149,24 +166,16 @@ class GameApp {
   }
 
   startMainCampaign() {
-    // Opening shot: Antenna pulse -> Mara at console
-    const mastPos = campaignFrame.getAnchorWorld('relay_mast');
-    this.cutsceneDirector.playShot({
-      targetPos: mastPos,
-      duration: 2.8,
-      subtitle: {
-        speaker: 'MARA',
-        text: 'The relay just picked up an anomalous keycode outside the perimeter.'
-      }
-    }, () => {
+    // Multi-shot opening cutscene
+    this.cutsceneDirector.playOpeningSequence(() => {
       // Begin Level 1: "WAKE SIGNAL"
       const firstObj = this.missionSystem.getCurrentObjective();
       this.objectiveHUD.setObjective(firstObj, this.missionSystem.currentMission);
-      this.objectiveGuidance.setObjective(firstObj);
+      this.pathGuidance.setObjective(firstObj);
 
       this.missionSystem.onObjectiveChanged = (obj, mission) => {
         this.objectiveHUD.setObjective(obj, mission);
-        this.objectiveGuidance.setObjective(obj);
+        this.pathGuidance.setObjective(obj);
       };
 
       this.missionSystem.onMissionCompleted = () => {
@@ -190,7 +199,7 @@ class GameApp {
     const deltaTime = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    // 1. Cutscene Director (Freezes player controls during cinematic shots)
+    // 1. Cutscene Director
     if (this.cutsceneDirector.isPlaying) {
       this.cutsceneDirector.update(deltaTime);
       this.playerAnimator.update(deltaTime, new THREE.Vector3(), 'idle');
@@ -225,13 +234,14 @@ class GameApp {
     this.lootSystem.update(deltaTime, this.player.position);
     this.npcSystem.update(deltaTime, this.player.position);
     this.missionSystem.update(this.player.position);
-    this.objectiveGuidance.update(deltaTime, this.player.position);
+    this.pathGuidance.update(deltaTime, this.player.position);
 
-    // 8. Visual Particles
+    // 8. Visual Particles & Physics Debug
     if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
       this.movementFX.emitDust(this.player.position.x, this.player.position.z, 2.0, 4);
     }
     this.movementFX.update(deltaTime, this.cameraController.camera);
+    this.collision.updateDebug(this.player);
 
     // 9. Debug Overlay
     this.debugOverlay.update();

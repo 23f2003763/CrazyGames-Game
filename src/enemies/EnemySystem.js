@@ -5,14 +5,16 @@ import { campaignFrame } from '../campaign/CampaignFrame.js';
 import { missionEvents } from '../missions/MissionEvents.js';
 
 /**
- * EnemySystem: Manages machine enemy spawns, encounters, and death loot drops.
+ * EnemySystem: Manages authored machine enemy spawns, multi-wave encounters,
+ * and narrative loot drops.
  */
 export class EnemySystem {
-  constructor(scene, combatSystem, lootSystem, audioSystem) {
+  constructor(scene, combatSystem, lootSystem, audioSystem, dialogueUI) {
     this.scene = scene;
     this.combatSystem = combatSystem;
     this.lootSystem = lootSystem;
     this.audioSystem = audioSystem;
+    this.dialogueUI = dialogueUI;
 
     this.enemies = [];
     this.scarabModel = null;
@@ -37,24 +39,29 @@ export class EnemySystem {
     this.waveNumber = 1;
     this.killedInEncounter = 0;
 
-    // Wave 1: 3 Scarabs
-    this.spawnScarab('scarab_spawn_1', false);
-    this.spawnScarab('scarab_spawn_2', false);
-    this.spawnScarab('scarab_spawn_3', false);
+    if (this.dialogueUI) {
+      this.dialogueUI.showRadioSubtitle('MARA', 'Contact! Lattice scouts detected ahead.', 3000);
+    }
 
     if (this.audioSystem) {
       this.audioSystem.playScarabWarning();
     }
+
+    // Wave 1: 3 Scarabs from cover
+    setTimeout(() => {
+      this.spawnScarab('scarab_spawn_1', false);
+      this.spawnScarab('scarab_spawn_2', false);
+      this.spawnScarab('scarab_spawn_3', false);
+    }, 600);
   }
 
   spawnScarab(anchorName, isFinal = false) {
     if (!this.scarabModel) {
-      // Retry in 100ms if model loading
       setTimeout(() => this.spawnScarab(anchorName, isFinal), 100);
       return;
     }
 
-    const spawnPos = campaignFrame.getAnchorWorld(anchorName);
+    const spawnPos = campaignFrame.requireAnchor(anchorName);
     const scarab = new ScarabEnemy(this.scene, this.scarabModel, {
       id: anchorName,
       maxHealth: 55,
@@ -88,31 +95,34 @@ export class EnemySystem {
 
     const dropPos = deadEnemy.position.clone();
 
-    // Check if final enemy of the encounter
-    if (this.killedInEncounter === this.totalInEncounter || deadEnemy.isFinalScarab) {
-      // Final Scarab drops the SIGNAL SHARD!
+    // Trigger reinforcements after first kill
+    if (this.killedInEncounter === 1 && this.waveNumber === 1) {
+      this.waveNumber = 2;
+      setTimeout(() => {
+        this.spawnScarab('scarab_spawn_4', false);
+        this.spawnScarab('scarab_spawn_5', true); // Final scarab
+        if (this.audioSystem) {
+          this.audioSystem.playScarabWarning();
+        }
+      }, 1000);
+    }
+
+    // Check if encounter completed
+    if (this.killedInEncounter >= this.totalInEncounter || deadEnemy.isFinalScarab) {
       if (this.lootSystem) {
         this.lootSystem.spawnPickup('Signal Shard', 1, dropPos);
-        this.lootSystem.spawnPickup('Arc Dust', 15, dropPos);
-      }
-      missionEvents.emit('allEnemiesDefeated', 'scarab_ambush');
-    } else {
-      // Regular loot drop
-      if (this.lootSystem) {
-        this.lootSystem.spawnPickup('Scrap', 8, dropPos);
-        this.lootSystem.spawnPickup('Arc Dust', 5, dropPos);
+        this.lootSystem.spawnPickup('Arc Dust', 20, dropPos);
       }
 
-      // Trigger Wave 2 when Wave 1 (3 enemies) is cleared
-      if (this.killedInEncounter === 3 && this.waveNumber === 1) {
-        this.waveNumber = 2;
-        setTimeout(() => {
-          this.spawnScarab('scarab_spawn_4', false);
-          this.spawnScarab('scarab_spawn_5', true); // Final scarab
-          if (this.audioSystem) {
-            this.audioSystem.playScarabWarning();
-          }
-        }, 1200);
+      if (this.dialogueUI) {
+        this.dialogueUI.showRadioSubtitle('UNKNOWN', '...Runner identified... Relay location acquired...', 4000);
+      }
+
+      missionEvents.emit('allEnemiesDefeated', 'scarab_ambush');
+    } else {
+      if (this.lootSystem) {
+        this.lootSystem.spawnPickup('Scrap', 8, dropPos);
+        this.lootSystem.spawnPickup('Arc Dust', 6, dropPos);
       }
     }
   }
@@ -123,10 +133,10 @@ export class EnemySystem {
       e.update(dt, playerPos);
     }
 
-    // Trigger encounter when player approaches the ambush zone (local Z >= 75)
+    // Trigger ambush when player reaches local Z >= 75
     if (!this.isEncounterActive && playerPos) {
       const local = campaignFrame.toLocal(playerPos);
-      if (local.z >= 75.0 && local.z <= 120.0) {
+      if (local.z >= 75.0 && local.z <= 118.0) {
         this.startFirstEncounter();
       }
     }
