@@ -48,7 +48,14 @@ export class World {
           child.receiveShadow = true;
           if (child.material) {
             child.material.flatShading = true;
-            child.material.roughness = Math.max(0.4, child.material.roughness || 0.7);
+            child.material.roughness = THREE.MathUtils.clamp(child.material.roughness ?? 0.7, 0.35, 0.95);
+            child.material.metalness = THREE.MathUtils.clamp(child.material.metalness ?? 0.0, 0.0, 0.75);
+            if (child.material.map) {
+              child.material.map.colorSpace = THREE.SRGBColorSpace;
+            }
+            if (child.material.emissiveMap) {
+              child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            }
             child.material.needsUpdate = true;
           }
         }
