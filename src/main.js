@@ -9,9 +9,14 @@ import { WalkableSurfaceSystem } from './physics/WalkableSurfaceSystem.js';
 import { CameraOcclusion } from './camera/CameraOcclusion.js';
 import { MovementFX } from './vfx/MovementFX.js';
 
-// Campaign & Gameplay Core Architecture
+// Arcfall Protocol Core Systems
+import { campaignFrame } from './campaign/CampaignFrame.js';
 import { CampaignWorld } from './campaign/CampaignWorld.js';
-import { ChapterDirector } from './campaign/ChapterDirector.js';
+import { CutsceneDirector } from './cinematics/CutsceneDirector.js';
+import { TutorialDirector } from './tutorial/TutorialDirector.js';
+import { CombatSystem } from './combat/CombatSystem.js';
+import { WeaponSystem } from './combat/WeaponSystem.js';
+import { EnemySystem } from './enemies/EnemySystem.js';
 import { MissionSystem } from './missions/MissionSystem.js';
 import { InteractionSystem } from './gameplay/InteractionSystem.js';
 import { LootSystem } from './gameplay/LootSystem.js';
@@ -21,54 +26,60 @@ import { ObjectiveHUD } from './ui/ObjectiveHUD.js';
 import { CheckpointSystem } from './gameplay/CheckpointSystem.js';
 import { AudioSystem } from './audio/AudioSystem.js';
 import { CampaignDebugOverlay } from './ui/CampaignDebugOverlay.js';
+import { DialogueUI } from './ui/DialogueUI.js';
 
 /**
- * Main Game Application Orchestrator
- * Drives the Linear Semi-Open Campaign, Sector Management, and Level 1 Gameplay Loop.
+ * Main Application Orchestrator: ARCFALL PROTOCOL
  */
 class GameApp {
   constructor() {
     this.container = document.getElementById('canvas-container');
     
-    // 1. Core Three.js Scene
+    // 1. Three.js Scene
     this.scene = new THREE.Scene();
 
-    // 2. Isometric Camera Controller
+    // 2. Isometric Camera Controller (Yaw 45 deg, Pitch 50 deg)
     this.cameraController = new IsometricCamera(this.container);
 
-    // 3. Global Post-Processing & Rendering Pipeline
+    // 3. Post-Processing & Rendering Pipeline
     this.renderPipeline = new RenderPipeline(
       this.container,
       this.scene,
       this.cameraController.camera
     );
 
-    // 4. Core Systems: Audio, Checkpoints, Interactions, Loot, NPCs
+    // 4. Core Systems
     this.audioSystem = new AudioSystem();
     this.checkpointSystem = new CheckpointSystem();
+    this.dialogueUI = new DialogueUI();
     this.interactionSystem = new InteractionSystem(this.cameraController.camera);
     this.lootSystem = new LootSystem(this.scene, this.interactionSystem, this.audioSystem);
     this.npcSystem = new NPCSystem(this.scene, this.interactionSystem);
 
-    // 5. Campaign World (+Z corridor, 7m highway, 3 Sectors, Electric Fences)
-    this.world = new CampaignWorld(
-      this.scene, 
-      this.interactionSystem, 
-      this.lootSystem, 
-      this.npcSystem
-    );
+    // 5. Cinematics Director
+    this.cutsceneDirector = new CutsceneDirector(this.cameraController, this.dialogueUI);
 
-    // 6. Physics & Walkable Surfaces
+    // 6. Physics, Collisions & Walkable Surfaces
     this.collision = new ColliderRegistry(this.scene);
     this.walkableSurfaceSystem = new WalkableSurfaceSystem(
       this.scene, 
       (x, z) => this.world.sampleHeight(x, z)
     );
+
+    // 7. Campaign World (+Z screen-up corridor, continuous fence, boundary forest)
+    this.world = new CampaignWorld(
+      this.scene,
+      this.collision,
+      this.interactionSystem, 
+      this.lootSystem, 
+      this.npcSystem,
+      this.cutsceneDirector
+    );
     if (this.world.terrainMesh) {
       this.walkableSurfaceSystem.registerSurface(this.world.terrainMesh);
     }
 
-    // 7. Playable Hero (Ryder)
+    // 8. Playable Hero (Ryder)
     this.player = new Player(this.scene);
     this.playerController = new PlayerController(
       this.player, 
@@ -78,65 +89,54 @@ class GameApp {
     );
     this.playerAnimator = new PlayerAnimator(this.player);
 
-    // Spawn Ryder inside The Relay courtyard facing +Z towards the road
-    this.player.position.set(0.0, 0.0, -8.0);
-    this.player.rotation.y = 0.0;
+    // Spawn Ryder in Calibration Yard facing screen-up (+Z forward)
+    const spawnWorldPos = campaignFrame.getAnchorWorld('player_spawn');
+    this.player.position.copy(spawnWorldPos);
+    this.player.rotation.y = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
     this.cameraController.setPlayer(this.player);
 
-    // 8. Mission & Objective Systems
-    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
-    this.chapterDirector = new ChapterDirector(this.world, this.missionSystem);
-    this.objectiveGuidance = new ObjectiveGuidance(this.scene);
-    this.objectiveHUD = new ObjectiveHUD();
-
-    // Initialize HUD & Guidance with first objective
-    const initialObj = this.missionSystem.getCurrentObjective();
-    this.objectiveHUD.setObjective(initialObj, this.missionSystem.currentMission);
-    this.objectiveGuidance.setObjective(initialObj);
-
-    // Wire Objective Change & Mission Completion Callbacks
-    this.missionSystem.onObjectiveChanged = (obj, mission) => {
-      this.objectiveHUD.setObjective(obj, mission);
-      this.objectiveGuidance.setObjective(obj);
-    };
-
-    this.missionSystem.onMissionCompleted = (mission) => {
-      this.objectiveHUD.showLevelComplete(mission.title);
-      if (this.audioSystem) {
-        this.audioSystem.playLevelComplete();
-      }
-    };
-
-    // 9. Camera Structural Occlusion
-    this.cameraOcclusion = new CameraOcclusion(
+    // 9. Combat, Weapons & Enemy Systems
+    this.combatSystem = new CombatSystem(this.scene, this.audioSystem);
+    this.weaponSystem = new WeaponSystem(
       this.scene, 
       this.cameraController.camera, 
-      this.player
+      this.player, 
+      this.audioSystem, 
+      this.combatSystem
     );
-    this.cameraOcclusion.setRoots({
-      sectors: this.world.sectorManager.rootGroup
-    });
+    this.enemySystem = new EnemySystem(
+      this.scene, 
+      this.combatSystem, 
+      this.lootSystem, 
+      this.audioSystem
+    );
 
-    // 10. Visual Effects & Particles
+    // 10. Mission Guidance & HUD
+    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
+    this.objectiveGuidance = new ObjectiveGuidance(this.scene, this.cameraController.camera);
+    this.objectiveHUD = new ObjectiveHUD();
+
+    // 11. Tutorial Director (Runs first in Calibration Yard)
+    this.tutorialDirector = new TutorialDirector(
+      this.scene,
+      this.player,
+      this.weaponSystem,
+      this.combatSystem,
+      this.dialogueUI,
+      this.audioSystem,
+      () => this.startMainCampaign()
+    );
+
+    // 12. Visual FX & Particles
     this.movementFX = new MovementFX(this.scene);
 
-    // 11. Debug Overlay (F5)
+    // 13. Debug Overlay (F5)
     this.debugOverlay = new CampaignDebugOverlay(
-      this.chapterDirector,
+      null,
       this.missionSystem,
       this.world.sectorManager,
       this.player
     );
-
-    // Debug Shortcuts (F7 Colliders, F9 Walkables)
-    this.cameraController.onToggleColliders = () => {
-      const active = this.collision.toggleDebug(undefined, this.player);
-      console.log(`[DEBUG] Colliders: ${active ? 'ON' : 'OFF'}`);
-    };
-    this.cameraController.onToggleWalkable = () => {
-      const active = this.walkableSurfaceSystem.toggleDebug();
-      console.log(`[DEBUG] Walkable Surfaces: ${active ? 'ON' : 'OFF'}`);
-    };
 
     this.clock = new THREE.Clock();
     this.animate = this.animate.bind(this);
@@ -146,6 +146,36 @@ class GameApp {
 
     // Start render loop
     this.animate();
+  }
+
+  startMainCampaign() {
+    // Opening shot: Antenna pulse -> Mara at console
+    const mastPos = campaignFrame.getAnchorWorld('relay_mast');
+    this.cutsceneDirector.playShot({
+      targetPos: mastPos,
+      duration: 2.8,
+      subtitle: {
+        speaker: 'MARA',
+        text: 'The relay just picked up an anomalous keycode outside the perimeter.'
+      }
+    }, () => {
+      // Begin Level 1: "WAKE SIGNAL"
+      const firstObj = this.missionSystem.getCurrentObjective();
+      this.objectiveHUD.setObjective(firstObj, this.missionSystem.currentMission);
+      this.objectiveGuidance.setObjective(firstObj);
+
+      this.missionSystem.onObjectiveChanged = (obj, mission) => {
+        this.objectiveHUD.setObjective(obj, mission);
+        this.objectiveGuidance.setObjective(obj);
+      };
+
+      this.missionSystem.onMissionCompleted = () => {
+        this.objectiveHUD.showLevelComplete();
+        if (this.audioSystem) {
+          this.audioSystem.playLevelComplete();
+        }
+      };
+    });
   }
 
   onWindowResize() {
@@ -160,54 +190,58 @@ class GameApp {
     const deltaTime = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    // 1. Input & Hero Physics Update
-    this.playerController.update(deltaTime);
-
-    // 2. Skeletal Animation Update
-    this.playerAnimator.update(
-      deltaTime, 
-      this.playerController.velocity, 
-      this.playerController.state
-    );
-
-    // 3. Movement Dust VFX Update
-    if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
-      this.movementFX.emitDust(this.player.position.x, this.player.position.z, 2.0, 4);
-    } else if (this.playerController.state !== 'idle') {
-      this.movementFX.updateWalkSteps(
-        this.player.position.x, 
-        this.player.position.z, 
-        this.playerController.velocity.length(), 
+    // 1. Cutscene Director (Freezes player controls during cinematic shots)
+    if (this.cutsceneDirector.isPlaying) {
+      this.cutsceneDirector.update(deltaTime);
+      this.playerAnimator.update(deltaTime, new THREE.Vector3(), 'idle');
+    } else {
+      // 2. Hero Input & Physics
+      this.playerController.update(deltaTime);
+      this.playerAnimator.update(
         deltaTime, 
-        elapsedTime
+        this.playerController.velocity, 
+        this.playerController.state
       );
+
+      // 3. Weapon Aiming & Firing
+      this.weaponSystem.update(deltaTime);
+
+      // 4. Camera Follow
+      this.cameraController.update(deltaTime);
     }
-    this.movementFX.update(deltaTime, this.cameraController.camera);
 
-    // 4. Campaign World & Sector Update
+    // 5. Combat & Enemy Systems Update
+    this.combatSystem.update(deltaTime);
+    this.enemySystem.update(deltaTime, this.player.position);
+
+    // 6. Tutorial Director Update
+    if (!this.tutorialDirector.isCompleted) {
+      this.tutorialDirector.update(deltaTime, this.playerController);
+    }
+
+    // 7. Gameplay & Mission Systems Update
     this.world.update(this.player.position);
-
-    // 5. Gameplay Systems Update
     this.interactionSystem.update(this.player.position);
     this.lootSystem.update(deltaTime, this.player.position);
     this.npcSystem.update(deltaTime, this.player.position);
     this.missionSystem.update(this.player.position);
     this.objectiveGuidance.update(deltaTime, this.player.position);
 
-    // 6. Camera Tracking & Structural Occlusion
-    this.cameraController.update(deltaTime);
-    this.cameraOcclusion.update(deltaTime);
+    // 8. Visual Particles
+    if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
+      this.movementFX.emitDust(this.player.position.x, this.player.position.z, 2.0, 4);
+    }
+    this.movementFX.update(deltaTime, this.cameraController.camera);
 
-    // 7. Debug Overlays Update
-    this.collision.updateDebug(this.player);
+    // 9. Debug Overlay
     this.debugOverlay.update();
 
-    // 8. Final Render
+    // 10. Final Post-Processed Render
     this.renderPipeline.render(deltaTime, this.cameraController.target);
   }
 }
 
-// Boot application when DOM is ready
+// Initialize when DOM ready
 window.addEventListener('DOMContentLoaded', () => {
   new GameApp();
 });

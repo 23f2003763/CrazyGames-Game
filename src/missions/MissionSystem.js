@@ -35,9 +35,9 @@ export class MissionSystem {
     });
 
     // 2. Loot Collected Event
-    missionEvents.on('chestOpened', (chestId) => {
+    missionEvents.on('itemCollected', (itemId) => {
       const obj = this.getCurrentObjective();
-      if (obj && obj.type === 'LOOT' && obj.targetId === chestId) {
+      if (obj && obj.type === 'LOOT' && obj.targetId === itemId) {
         this.advanceObjective();
       }
     });
@@ -57,6 +57,14 @@ export class MissionSystem {
         this.advanceObjective();
       }
     });
+
+    // 5. Enemies Defeated Event
+    missionEvents.on('allEnemiesDefeated', (encounterId) => {
+      const obj = this.getCurrentObjective();
+      if (obj && obj.type === 'DEFEAT' && obj.targetId === encounterId) {
+        this.advanceObjective();
+      }
+    });
   }
 
   advanceObjective() {
@@ -67,15 +75,15 @@ export class MissionSystem {
       this.audioSystem.playObjectiveUpdate();
     }
 
-    if (this.currentObjectiveIndex >= this.currentMission.objectives.length - 1 && prevObj?.id === 'obj_follow_highway') {
-      // Level 1 Complete set-piece moment!
+    if (prevObj?.id === 'obj_reach_repeater') {
+      // Level 1 Complete moment!
       if (this.onMissionCompleted) {
         this.onMissionCompleted(this.currentMission);
       }
       if (this.checkpointSystem) {
         this.checkpointSystem.saveCheckpoint(
           this.currentMission.chapterId,
-          'sector_02_highway',
+          'sector_01_relay',
           this.currentMission.id,
           this.currentObjectiveIndex
         );

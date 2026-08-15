@@ -3,18 +3,19 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Sector } from './Sector.js';
 import { CAMPAIGN_CHAPTERS } from './CampaignData.js';
 import { SECTOR_DRESSING } from './SectorDressingData.js';
+import { campaignFrame } from './CampaignFrame.js';
 import { missionEvents } from '../missions/MissionEvents.js';
 
 /**
- * SectorManager: Manages sector lifecycles, loads authored models,
- * and assembles the 100% deterministic campaign scene graph.
+ * SectorManager: Assembles authored sectors using CampaignFrame coordinates.
  */
 export class SectorManager {
-  constructor(scene, interactionSystem, lootSystem, npcSystem) {
+  constructor(scene, interactionSystem, lootSystem, npcSystem, cutsceneDirector) {
     this.scene = scene;
     this.interactionSystem = interactionSystem;
     this.lootSystem = lootSystem;
     this.npcSystem = npcSystem;
+    this.cutsceneDirector = cutsceneDirector;
 
     this.rootGroup = new THREE.Group();
     this.rootGroup.name = 'CampaignSectors_Root';
@@ -42,7 +43,6 @@ export class SectorManager {
       this.rootGroup.add(sector.group);
     });
 
-    // Default to first sector
     const firstSec = this.sectors.get('sector_01_relay');
     if (firstSec) {
       firstSec.activate();
@@ -51,19 +51,14 @@ export class SectorManager {
   }
 
   async loadAllAssetsAndBuild() {
-    // 1. Load Modular Asset GLBs
-    const [fenceGLTF, treeGLTF, rockGLTF] = await Promise.all([
+    const [fenceGLTF, arcPropsGLTF] = await Promise.all([
       this.loadGLTFPromise('/models/world/electric_fence_set.glb'),
-      this.loadGLTFPromise('/models/world/tree_set.glb'),
-      this.loadGLTFPromise('/models/world/rock_set.glb')
+      this.loadGLTFPromise('/models/world/arc_props.glb')
     ]);
 
-    // Extract named parts
     this.storeModelParts(fenceGLTF.scene);
-    this.storeModelParts(treeGLTF.scene);
-    this.storeModelParts(rockGLTF.scene);
+    this.storeModelParts(arcPropsGLTF.scene);
 
-    // 2. Build each sector's deterministic dressing
     this.sectors.forEach((sector) => {
       this.buildSectorContent(sector);
     });
@@ -102,90 +97,106 @@ export class SectorManager {
     const data = SECTOR_DRESSING[sector.id];
     if (!data) return;
 
-    // 1. Electric Fences
-    if (data.fences) {
-      data.fences.forEach((f) => {
-        const mesh = this.getModel(f.model);
-        if (mesh) {
-          mesh.position.set(f.x, f.y, f.z);
-          mesh.rotation.y = f.rotY || 0;
-          sector.group.add(mesh);
-        }
-      });
-    }
-
-    // 2. Trees
-    if (data.trees) {
-      data.trees.forEach((t) => {
-        const mesh = this.getModel(t.model);
-        if (mesh) {
-          mesh.position.set(t.x, t.y, t.z);
-          mesh.rotation.y = t.rotY || 0;
-          if (t.scale) mesh.scale.setScalar(t.scale);
-          sector.group.add(mesh);
-        }
-      });
-    }
-
-    // 3. Rocks
-    if (data.rocks) {
-      data.rocks.forEach((r) => {
-        const mesh = this.getModel(r.model);
-        if (mesh) {
-          mesh.position.set(r.x, r.y, r.z);
-          mesh.rotation.y = r.rotY || 0;
-          if (r.scale) mesh.scale.setScalar(r.scale);
-          sector.group.add(mesh);
-        }
-      });
-    }
-
-    // 4. Quaternius Props & Vehicles
-    if (data.props) {
-      data.props.forEach((p) => {
-        this.loadQuaterniusProp(p, sector.group);
-      });
-    }
-
-    // 5. Buildings & Interactive Gate
+    // 1. Buildings & Landmarks
     if (data.buildings) {
       data.buildings.forEach((b) => {
         this.loadBuilding(b, sector.group);
       });
     }
 
-    // Special wiring for Sector 1 Exit Gate & Power Box
-    if (sector.id === 'sector_01_relay') {
-      this.wireRelayGateInteractivity(sector.group);
-    }
-
-    // 6. Loot & Chests
-    if (data.loot && this.lootSystem) {
-      data.loot.forEach((l) => {
-        this.lootSystem.registerChest(l, sector.group);
+    // 2. Props
+    if (data.props) {
+      data.props.forEach((p) => {
+        this.loadQuaterniusProp(p, sector.group);
       });
     }
 
-    // 7. NPCs
+    // 3. Loot / Salvage Chests
+    if (data.loot && this.lootSystem) {
+      data.loot.forEach((l) => {
+        const worldPos = campaignFrame.toWorld(l.localX, l.localZ, 0);
+        this.lootSystem.registerChest({
+          id: l.id,
+          x: worldPos.x,
+          y: worldPos.y,
+          z: worldPos.z,
+          rotY: l.rotY || 0,
+          isQuestChest: l.isQuestChest
+        }, sector.group);
+      });
+    }
+
+    // 4. NPCs
     if (data.npc && this.npcSystem) {
       data.npc.forEach((n) => {
-        this.npcSystem.registerNPC(n, sector.group);
+        const worldPos = campaignFrame.toWorld(n.localX, n.localZ, 0);
+        this.npcSystem.registerNPC({
+          id: n.id,
+          name: n.name,
+          x: worldPos.x,
+          y: worldPos.y,
+          z: worldPos.z,
+          rotY: n.rotY || 0
+        }, sector.group);
+      });
+    }
+
+    // Wire Interactive Terminals for Sector 1
+    if (sector.id === 'sector_01_relay') {
+      this.wireRelayInteractiveElements(sector.group);
+    }
+
+    // Wire Dead Repeater for Sector 3
+    if (sector.id === 'sector_03_repeater') {
+      this.wireRepeaterInteractiveElements(sector.group);
+    }
+  }
+
+  loadBuilding(b, parentGroup) {
+    const worldPos = campaignFrame.toWorld(b.localX, b.localZ, 0);
+
+    let path = '';
+    if (b.model === 'RelayCabin') {
+      path = '/models/relay_hub.glb';
+    } else {
+      const part = this.getModel(b.model);
+      if (part) {
+        part.position.copy(worldPos);
+        const baseYaw = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
+        part.rotation.y = baseYaw + (b.rotY || 0);
+        if (b.scale) part.scale.setScalar(b.scale);
+        parentGroup.add(part);
+        return;
+      }
+    }
+
+    if (path) {
+      this.loader.load(path, (gltf) => {
+        const model = gltf.scene;
+        model.position.copy(worldPos);
+        const baseYaw = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
+        model.rotation.y = baseYaw + (b.rotY || 0);
+        if (b.scale) model.scale.setScalar(b.scale);
+        model.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        parentGroup.add(model);
       });
     }
   }
 
   loadQuaterniusProp(p, parentGroup) {
-    let path = '';
-    if (p.model.startsWith('Vehicle_')) {
-      path = `/assets/vendor/quaternius/zombie-apocalypse/Vehicles/glTF/${p.model}.gltf`;
-    } else {
-      path = `/assets/vendor/quaternius/zombie-apocalypse/Environment/glTF/${p.model}.gltf`;
-    }
+    const worldPos = campaignFrame.toWorld(p.localX, p.localZ, 0);
+    const path = `/assets/vendor/quaternius/zombie-apocalypse/Environment/glTF/${p.model}.gltf`;
 
     this.loader.load(path, (gltf) => {
       const model = gltf.scene;
-      model.position.set(p.x, p.y, p.z);
-      model.rotation.y = p.rotY || 0;
+      model.position.copy(worldPos);
+      const baseYaw = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
+      model.rotation.y = baseYaw + (p.rotY || 0);
       if (p.scale) model.scale.setScalar(p.scale);
       model.traverse((child) => {
         if (child.isMesh) {
@@ -199,87 +210,74 @@ export class SectorManager {
     });
   }
 
-  loadBuilding(b, parentGroup) {
-    let path = '';
-    if (b.model === 'RelayCabin') {
-      path = '/models/relay_hub.glb';
-    } else if (b.model === 'AbandonedGasStation') {
-      path = '/models/abandoned_gas_station.glb';
-    } else {
-      // Local part from fence set
-      const part = this.getModel(b.model);
-      if (part) {
-        part.position.set(b.x, b.y, b.z);
-        part.rotation.y = b.rotY || 0;
-        if (b.scale) part.scale.setScalar(b.scale);
-        parentGroup.add(part);
-        return;
-      }
-    }
-
-    if (path) {
-      this.loader.load(path, (gltf) => {
-        const model = gltf.scene;
-        model.position.set(b.x, b.y, b.z);
-        model.rotation.y = b.rotY || 0;
-        if (b.scale) model.scale.setScalar(b.scale);
-        model.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-        parentGroup.add(model);
-      });
-    }
-  }
-
-  wireRelayGateInteractivity(sectorGroup) {
+  wireRelayInteractiveElements(sectorGroup) {
+    // 1. Find gate door roots for opening animation
     setTimeout(() => {
       sectorGroup.traverse((child) => {
-        if (child.name === 'GateDoor_L') this.gateDoorL = child;
-        if (child.name === 'GateDoor_R') this.gateDoorR = child;
+        if (child.name === 'GateDoor_L_Root' || child.name === 'GateDoor_L') this.gateDoorL = child;
+        if (child.name === 'GateDoor_R_Root' || child.name === 'GateDoor_R') this.gateDoorR = child;
       });
-    }, 600);
+    }, 800);
 
+    // 2. Signal Console Interaction (Objective 2)
+    const consolePos = campaignFrame.getAnchorWorld('signal_console');
     this.interactionSystem.registerInteractable({
-      id: 'gate_power_box',
-      position: new THREE.Vector3(3.8, 1.2, 48.5),
+      id: 'signal_console',
+      position: consolePos,
       radius: 2.8,
-      text: 'Power Road Exit Gate',
-      promptOffsetY: 1.6,
+      text: 'Read Signal Telemetry',
+      promptOffsetY: 1.4,
       onInteract: () => {
-        if (this.isGateOpen) {
-          if (this.lootSystem) this.lootSystem.showToast('Exit Gate is already powered & open.');
-          return;
+        this.interactionSystem.unregisterInteractable('signal_console');
+        this.openNorthGate();
+        missionEvents.emit('objectInteracted', 'signal_console');
+      }
+    });
+  }
+
+  openNorthGate() {
+    if (this.isGateOpen) return;
+    this.isGateOpen = true;
+
+    // Trigger short cinematic camera pan to gate
+    const gatePos = campaignFrame.getAnchorWorld('relay_gate');
+    if (this.cutsceneDirector) {
+      this.cutsceneDirector.playShot({
+        targetPos: gatePos,
+        duration: 3.2,
+        subtitle: {
+          speaker: 'MARA',
+          text: 'Gate unlocked. Something heard us out there.'
         }
+      });
+    }
 
-        if (this.lootSystem && this.lootSystem.inventory.questItems.has('Road Gate Fuse')) {
-          this.isGateOpen = true;
-          this.lootSystem.inventory.questItems.delete('Road Gate Fuse');
-          this.lootSystem.showToast('Fuse Inserted! Exit Gate Unlocked.', '#a371f7');
+    // Animate gate doors swinging open
+    let progress = 0;
+    const openInterval = setInterval(() => {
+      progress += 0.04;
+      if (this.gateDoorL) this.gateDoorL.rotation.y = -progress * Math.PI * 0.45;
+      if (this.gateDoorR) this.gateDoorR.rotation.y = progress * Math.PI * 0.45;
+      if (progress >= 1.0) clearInterval(openInterval);
+    }, 30);
+  }
 
-          // Animate gate doors opening
-          let progress = 0;
-          const openInterval = setInterval(() => {
-            progress += 0.05;
-            if (this.gateDoorL) this.gateDoorL.rotation.y = -progress * Math.PI * 0.45;
-            if (this.gateDoorR) this.gateDoorR.rotation.y = progress * Math.PI * 0.45;
-            if (progress >= 1.0) clearInterval(openInterval);
-          }, 30);
-
-          missionEvents.emit('objectInteracted', 'gate_power_box');
-        } else {
-          if (this.lootSystem) {
-            this.lootSystem.showToast('Gate Offline: Requires Road Gate Fuse.', '#ff5555');
-          }
-        }
+  wireRepeaterInteractiveElements(sectorGroup) {
+    const repeaterPos = campaignFrame.getAnchorWorld('signal_repeater_console');
+    this.interactionSystem.registerInteractable({
+      id: 'signal_repeater_console',
+      position: repeaterPos,
+      radius: 3.2,
+      text: 'Insert Signal Shard',
+      promptOffsetY: 1.8,
+      onInteract: () => {
+        this.interactionSystem.unregisterInteractable('signal_repeater_console');
+        missionEvents.emit('objectInteracted', 'signal_repeater_console');
       }
     });
   }
 
   update(playerPos) {
-    // Check which sector player is currently inside
     for (const [id, sector] of this.sectors) {
       if (sector.contains(playerPos.x, playerPos.z)) {
         if (this.activeSectorId !== id) {

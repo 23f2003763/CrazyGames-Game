@@ -1,6 +1,6 @@
 /**
- * AudioSystem: Web Audio API sound synthesizer providing immediate, responsive
- * audio feedback without requiring large external WAV/MP3 files.
+ * AudioSystem: Web Audio API sound synthesizer for ARCFALL PROTOCOL.
+ * Immediate, crisp audio feedback for Arc weapons, machine destruction, and mission events.
  */
 export class AudioSystem {
   constructor() {
@@ -12,7 +12,6 @@ export class AudioSystem {
   initAudioContext() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
-      // Lazy init on first user gesture
       const unlockAudio = () => {
         if (!this.ctx) {
           this.ctx = new AudioCtx();
@@ -35,7 +34,123 @@ export class AudioSystem {
     }
   }
 
-  // 1. Objective Update Chime (Warm dual-tone chime)
+  // 1. Volt Caster Shot (High-frequency Arc zap)
+  playVoltCasterFire() {
+    this.ensureContext();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(160, t + 0.08);
+
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.09);
+  }
+
+  // 2. Chain Lightning Crackle
+  playChainLightning() {
+    this.ensureContext();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1400, t);
+    osc.frequency.setValueAtTime(900, t + 0.04);
+    osc.frequency.setValueAtTime(1800, t + 0.08);
+
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.14);
+  }
+
+  // 3. Machine Hit Impact
+  playMachineHit() {
+    this.ensureContext();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(320, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.06);
+
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.07);
+  }
+
+  // 4. Machine Death Explosion
+  playMachineDeath() {
+    this.ensureContext();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.4);
+  }
+
+  // 5. Scarab Telegraph Chirp
+  playScarabWarning() {
+    this.ensureContext();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.exponentialRampToValueAtTime(660, t + 0.15);
+
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  // 6. Objective Update Chime
   playObjectiveUpdate() {
     this.ensureContext();
     if (!this.ctx || this.isMuted) return;
@@ -48,14 +163,14 @@ export class AudioSystem {
     osc1.type = 'triangle';
     osc2.type = 'sine';
 
-    osc1.frequency.setValueAtTime(523.25, t); // C5
-    osc1.frequency.exponentialRampToValueAtTime(659.25, t + 0.15); // E5
+    osc1.frequency.setValueAtTime(587.33, t); // D5
+    osc1.frequency.exponentialRampToValueAtTime(880.00, t + 0.15); // A5
 
-    osc2.frequency.setValueAtTime(783.99, t + 0.08); // G5
-    osc2.frequency.exponentialRampToValueAtTime(1046.50, t + 0.3); // C6
+    osc2.frequency.setValueAtTime(1174.66, t + 0.08); // D6
+    osc2.frequency.exponentialRampToValueAtTime(1760.00, t + 0.25); // A6
 
     gain.gain.setValueAtTime(0.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
     osc1.connect(gain);
     osc2.connect(gain);
@@ -63,34 +178,11 @@ export class AudioSystem {
 
     osc1.start(t);
     osc2.start(t + 0.08);
-    osc1.stop(t + 0.5);
-    osc2.stop(t + 0.5);
+    osc1.stop(t + 0.45);
+    osc2.stop(t + 0.45);
   }
 
-  // 2. Chest Open Rumble
-  playChestOpen() {
-    this.ensureContext();
-    if (!this.ctx || this.isMuted) return;
-
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(120, t);
-    osc.frequency.exponentialRampToValueAtTime(60, t + 0.35);
-
-    gain.gain.setValueAtTime(0.18, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc.start(t);
-    osc.stop(t + 0.4);
-  }
-
-  // 3. Loot Pickup Chime
+  // 7. Loot / Pickup Chime
   playLootPickup() {
     this.ensureContext();
     if (!this.ctx || this.isMuted) return;
@@ -100,65 +192,41 @@ export class AudioSystem {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, t); // A5
-    osc.frequency.exponentialRampToValueAtTime(1318.51, t + 0.12); // E6
+    osc.frequency.setValueAtTime(987.77, t); // B5
+    osc.frequency.exponentialRampToValueAtTime(1318.51, t + 0.1); // E6
 
-    gain.gain.setValueAtTime(0.15, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc.start(t);
-    osc.stop(t + 0.18);
-  }
-
-  // 4. Gate Power Spark Surge
-  playGatePower() {
-    this.ensureContext();
-    if (!this.ctx || this.isMuted) return;
-
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(180, t);
-    osc.frequency.setValueAtTime(360, t + 0.08);
-    osc.frequency.setValueAtTime(720, t + 0.16);
-
-    gain.gain.setValueAtTime(0.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(t);
-    osc.stop(t + 0.4);
+    osc.stop(t + 0.15);
   }
 
-  // 5. Level Complete Fanfare
+  // 8. Level Complete Fanfare
   playLevelComplete() {
     this.ensureContext();
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    const notes = [440, 554.37, 659.25, 880, 1108.73];
     notes.forEach((freq, idx) => {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, t + idx * 0.12);
+      osc.frequency.setValueAtTime(freq, t + idx * 0.1);
 
-      gain.gain.setValueAtTime(0.22, t + idx * 0.12);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.12 + 0.6);
+      gain.gain.setValueAtTime(0.25, t + idx * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.1 + 0.7);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
 
-      osc.start(t + idx * 0.12);
-      osc.stop(t + idx * 0.12 + 0.6);
+      osc.start(t + idx * 0.1);
+      osc.stop(t + idx * 0.1 + 0.7);
     });
   }
 }

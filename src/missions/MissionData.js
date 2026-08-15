@@ -1,61 +1,56 @@
 import * as THREE from 'three';
+import { campaignFrame } from '../campaign/CampaignFrame.js';
 
 /**
- * MissionData: Authored definition of campaign missions and objectives.
+ * MissionData: Authored campaign mission objectives for ARCFALL PROTOCOL.
  */
 export const MISSIONS = [
   {
-    id: 'level_01_road_out',
-    title: 'LEVEL 1 — ROAD OUT',
+    id: 'level_01_wake_signal',
+    title: 'LEVEL 1 — WAKE SIGNAL',
     chapterId: 'chapter_01',
-    description: 'Prepare your supplies at The Relay and venture out onto Dead Highway 84.',
+    description: 'Investigate the anomalous human transmission detected on a long-dead network channel.',
     objectives: [
       {
         id: 'obj_talk_mara',
         type: 'TALK',
         targetId: 'mara',
         title: 'Speak with Mara',
-        description: 'Talk to Relay engineer Mara in the courtyard.',
-        targetPos: new THREE.Vector3(-3.2, 1.4, -3.5),
-        guidanceType: 'beacon'
+        description: 'Meet Mara by the Relay communications array.',
+        targetPos: campaignFrame.getAnchorWorld('mara_hub')
       },
       {
-        id: 'obj_get_kit',
-        type: 'LOOT',
-        targetId: 'relay_starter_chest',
-        title: 'Grab the Road Supply Kit',
-        description: 'Open the supply chest by the cabin workbench.',
-        targetPos: new THREE.Vector3(-4.8, 0.6, -3.2),
-        guidanceType: 'chevrons'
-      },
-      {
-        id: 'obj_power_gate',
+        id: 'obj_check_console',
         type: 'INTERACT',
-        targetId: 'gate_power_box',
-        title: 'Power the Exit Gate',
-        description: 'Insert the Gate Fuse into the security terminal.',
-        targetPos: new THREE.Vector3(3.8, 1.3, 48.5),
-        guidanceType: 'beacon'
+        targetId: 'signal_console',
+        title: 'Inspect Signal Console',
+        description: 'Read the waveform authentication codes at the terminal.',
+        targetPos: campaignFrame.getAnchorWorld('signal_console')
       },
       {
-        id: 'obj_follow_highway',
+        id: 'obj_follow_trace',
         type: 'REACH',
-        targetId: 'convoy_area',
-        title: 'Follow Dead Highway 84',
-        description: 'Venture north along the highway to the wrecked convoy.',
-        targetPos: new THREE.Vector3(0.0, 0.0, 166.0),
-        reachRadius: 8.0,
-        guidanceType: 'road_chevrons'
+        targetId: 'ambush_trigger',
+        title: 'Follow the Arc Trace',
+        description: 'Track the signal route north through the security gate.',
+        targetPos: campaignFrame.getAnchorWorld('ambush_trigger'),
+        reachRadius: 9.0
       },
       {
-        id: 'obj_reach_octane',
-        type: 'REACH',
-        targetId: 'octane_mart',
-        title: 'Reach Octane Mart',
-        description: 'Scout the crossroads gas station for fuel and salvage.',
-        targetPos: new THREE.Vector3(0.0, 0.0, 235.0),
-        reachRadius: 10.0,
-        guidanceType: 'beacon'
+        id: 'obj_defeat_scarabs',
+        type: 'DEFEAT',
+        targetId: 'scarab_ambush',
+        title: 'Break the Link: Destroy Machines',
+        description: 'Eliminate the Lattice Scarab machines tracking the signal.',
+        targetPos: campaignFrame.getAnchorWorld('scarab_spawn_2')
+      },
+      {
+        id: 'obj_reach_repeater',
+        type: 'INTERACT',
+        targetId: 'signal_repeater_console',
+        title: 'Reactivate the Dead Repeater',
+        description: 'Insert the Signal Shard into the outpost communications pylon.',
+        targetPos: campaignFrame.getAnchorWorld('signal_repeater_console')
       }
     ]
   }
