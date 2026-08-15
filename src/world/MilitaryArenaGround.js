@@ -2,17 +2,8 @@ import * as THREE from 'three';
 import { getTerrainHeight } from './MapData.js';
 
 export class MilitaryArenaGround {
-  constructor(scene) {
-    this.group = new THREE.Group();
-    this.group.name = 'MilitaryArenaGround';
-
-    const y = getTerrainHeight(100, -72) + 0.05;
-
-    this.group.position.set(100, y, -72);
-    this.group.rotation.y = -Math.PI * 0.28;
-    this.group.scale.setScalar(1.15);
-
-    scene.add(this.group);
+  constructor(root) {
+    this.group = root;
 
     this.materials = {
       dirt: this.mat(0x604329),
@@ -58,6 +49,10 @@ export class MilitaryArenaGround {
     mesh.name = name;
     mesh.position.y = height;
     mesh.receiveShadow = true;
+    
+    // Tag it for WalkableSurfaceSystem
+    mesh.userData.isWalkable = true;
+    mesh.userData.surfaceType = 'ground';
 
     this.group.add(mesh);
     return mesh;

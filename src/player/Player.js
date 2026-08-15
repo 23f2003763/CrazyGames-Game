@@ -28,32 +28,33 @@ export class Player {
       (gltf) => {
         const model = gltf.scene;
         
-        // Find the PLAYER_ROOT node, or just use the model if not wrapped
+        // Find the PLAYER_ROOT node, or use model directly
         let rootNode = model.getObjectByName('PLAYER_ROOT');
         if (!rootNode) rootNode = model;
         
-        // Traverse and extract parts
+        // Traverse and extract parts & configure materials
         rootNode.traverse((child) => {
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
             
-            // Apply a nice toon-like material instead of default GLTF
             if (child.material) {
-               const color = child.material.color;
-               child.material = new THREE.MeshStandardMaterial({
-                 color: color,
-                 roughness: 0.9,
-                 metalness: 0.1,
-                 flatShading: true
-               });
+              const origColor = child.material.color ? child.material.color.clone() : new THREE.Color(0xcccccc);
+              const roughness = child.material.roughness !== undefined ? child.material.roughness : 0.8;
+              const metalness = child.material.metalness !== undefined ? child.material.metalness : 0.1;
+              child.material = new THREE.MeshStandardMaterial({
+                color: origColor,
+                roughness: roughness,
+                metalness: metalness,
+                flatShading: true
+              });
             }
           }
           
-          // Store named parts
+          // Store named parts for procedural animation
           const name = child.name.toLowerCase();
           if (name) {
-             this.parts[name] = child;
+            this.parts[name] = child;
           }
           
           if (name === 'shadow_socket') {
@@ -61,21 +62,37 @@ export class Player {
           }
         });
         
-        // Store base Y position of torso for animation
+        // Store base Y position of torso for procedural locomotion/breathing
         if (this.parts.torso) {
           this.baseTorsoY = this.parts.torso.position.y;
         }
         
-        // Create contact shadow
-        this.createContactShadow();
+        // Measure imported bounding box and normalize height to TARGET_PLAYER_HEIGHT = 2.1
+        model.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(model);
+        const currentHeight = box.max.y - box.min.y;
         
-        // Add to our group
+        const TARGET_PLAYER_HEIGHT = 2.1;
+        if (currentHeight > 0.01) {
+          const scaleFactor = TARGET_PLAYER_HEIGHT / currentHeight;
+          model.scale.setScalar(scaleFactor);
+          model.updateMatrixWorld(true);
+          
+          // Re-measure after scaling and offset so lowest bounding-box Y is exactly 0.0
+          const scaledBox = new THREE.Box3().setFromObject(model);
+          model.position.y = -scaledBox.min.y;
+          model.updateMatrixWorld(true);
+          
+          const finalBox = new THREE.Box3().setFromObject(model);
+          const finalHeight = finalBox.max.y - finalBox.min.y;
+          console.log(`RYDER FINAL WORLD HEIGHT: ${finalHeight.toFixed(2)}`);
+        }
+
+        // Add model to PlayerRoot group
         this.group.add(model);
         
-        // Fix rotation - Blender models often need this when imported to three.js
-        // If the script orientates it well, we might not need this, but usually good to have.
-        // model.rotation.x = Math.PI / 2; // depending on export settings
-        
+        // Create contact shadow on ground plane
+        this.createContactShadow();
       },
       undefined,
       (error) => {
@@ -89,19 +106,17 @@ export class Player {
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.38,
       depthWrite: false
     });
     
     const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowMesh.name = 'PlayerContactShadow';
     shadowMesh.rotation.x = -Math.PI / 2;
-    shadowMesh.position.y = 0.05; // Slightly above ground
+    shadowMesh.position.y = 0.025; // Slightly above ground to prevent z-fighting
     
-    if (this.shadowSocket) {
-      this.shadowSocket.add(shadowMesh);
-    } else {
-      this.group.add(shadowMesh);
-    }
+    // Attach directly to PlayerRoot group
+    this.group.add(shadowMesh);
   }
   
   get position() {

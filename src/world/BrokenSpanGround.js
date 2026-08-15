@@ -6,17 +6,8 @@ import { getTerrainHeight } from './MapData.js';
  * Uses ShapeGeometry with polygon offsets to eliminate z-fighting and create organic dry riverbed terrain.
  */
 export class BrokenSpanGround {
-  constructor(scene) {
-    this.group = new THREE.Group();
-    this.group.name = 'BrokenSpanGround';
-
-    const y = getTerrainHeight(-5, 22) + 0.04;
-    this.group.position.set(-5, y, 22);
-    // Align with the natural flow of the riverbed and bridge crossing
-    this.group.rotation.y = Math.PI * 0.18;
-    this.group.scale.setScalar(1.12);
-
-    scene.add(this.group);
+  constructor(root) {
+    this.group = root;
 
     this.materials = {
       dryMud: this.mat(0x523d28, 0.94),
@@ -69,6 +60,12 @@ export class BrokenSpanGround {
     mesh.name = name;
     mesh.position.y = height;
     mesh.receiveShadow = true;
+    
+    // Tag it for WalkableSurfaceSystem (except water)
+    if (!name.startsWith('WaterPool')) {
+      mesh.userData.isWalkable = true;
+      mesh.userData.surfaceType = 'ground';
+    }
 
     this.group.add(mesh);
     return mesh;

@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { getTerrainHeight } from '../world/MapData.js';
 
 export class PlayerController {
-  constructor(player, cameraController, collisionSystem) {
+  constructor(player, cameraController, collisionSystem, walkableSurfaceSystem) {
     this.player = player;
     this.cameraController = cameraController;
     this.collisionSystem = collisionSystem;
+    this.walkableSurfaceSystem = walkableSurfaceSystem;
     
     // Input state
     this.keys = {
@@ -19,10 +20,10 @@ export class PlayerController {
     this.targetRotation = 0;
     
     // Speeds
-    this.walkSpeed = 4.5;
-    this.sprintSpeed = 8.5;
-    this.acceleration = 40.0;
-    this.friction = 15.0;
+    this.walkSpeed = 4.8;
+    this.sprintSpeed = 8.8;
+    this.acceleration = 38.0;
+    this.friction = 14.0;
     
     // Dodge state
     this.isDodging = false;
@@ -43,7 +44,6 @@ export class PlayerController {
   }
   
   handleKey(e, isDown) {
-    // Only process gameplay inputs if not typing in a UI (optional safeguard)
     if (document.activeElement.tagName === 'INPUT') return;
     
     const key = e.key.toLowerCase();
@@ -68,8 +68,6 @@ export class PlayerController {
       this.dodgeTime = 0;
       this.dodgeDir.copy(this.moveDirection).normalize();
       this.state = 'dodge';
-      
-      // We will tell FX to emit a burst here from the main loop
     }
   }
   
@@ -80,14 +78,28 @@ export class PlayerController {
       this.updateMovement(dt);
     }
     
-    // Apply collision
+    // Apply collision resolution
     if (this.collisionSystem) {
-      this.collisionSystem.resolvePosition(this.player.position, 0.4);
+      this.collisionSystem.resolvePosition(this.player.position, 0.45);
     }
     
-    // Snap to terrain height
-    const h = getTerrainHeight(this.player.position.x, this.player.position.z);
-    this.player.position.y = h;
+    // Smooth height interpolation over walkable surfaces and terrain
+    if (this.walkableSurfaceSystem) {
+      const targetY = this.walkableSurfaceSystem.sampleHeight(
+        this.player.position.x, 
+        this.player.position.z, 
+        this.player.position.y
+      );
+      
+      const diff = targetY - this.player.position.y;
+      if (Math.abs(diff) > 2.5) {
+        this.player.position.y = targetY;
+      } else {
+        this.player.position.y += diff * Math.min(1.0, 24.0 * dt);
+      }
+    } else {
+      this.player.position.y = getTerrainHeight(this.player.position.x, this.player.position.z) + 0.03;
+    }
   }
   
   updateDodge(dt) {
@@ -102,14 +114,13 @@ export class PlayerController {
     
     if (this.dodgeTime >= this.dodgeDuration) {
       this.isDodging = false;
-      this.velocity.copy(dodgeVel).multiplyScalar(0.3); // Keep some momentum
+      this.velocity.copy(dodgeVel).multiplyScalar(0.3);
     }
     
-    this.updateRotation(dt * 15); // Fast rotation during dodge
+    this.updateRotation(dt * 15);
   }
   
   updateMovement(dt) {
-    // 1. Calculate input vector
     let ix = 0;
     let iz = 0;
     
@@ -120,48 +131,34 @@ export class PlayerController {
     
     const inputVec = new THREE.Vector3(ix, 0, iz);
     
-    // 2. Make input camera-relative
     if (inputVec.lengthSq() > 0) {
       inputVec.normalize();
       
-      // Get camera yaw (rotation around Y)
-      // Since IsometricCamera rotates a pivot, we need the pivot's Y rotation
-      // Assuming cameraController exposes the current yaw or pivot
+      // Camera-relative movement
       const camYaw = this.cameraController.pivot ? this.cameraController.pivot.rotation.y : 0;
-      
-      // Rotate input vector by camera yaw
       inputVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw);
       
       this.moveDirection.copy(inputVec);
-      
-      // Set target rotation to face movement direction
       this.targetRotation = Math.atan2(-inputVec.x, -inputVec.z);
       
-      // Determine state and speed
       const targetSpeed = this.keys.shift ? this.sprintSpeed : this.walkSpeed;
       this.state = this.keys.shift ? 'sprint' : 'walk';
       
-      // Accelerate
       const targetVelocity = inputVec.clone().multiplyScalar(targetSpeed);
       this.velocity.lerp(targetVelocity, this.acceleration * dt);
       
     } else {
-      // Decelerate (friction)
       this.velocity.lerp(new THREE.Vector3(), this.friction * dt);
       this.state = 'idle';
     }
     
-    // Apply velocity
     this.player.position.add(this.velocity.clone().multiplyScalar(dt));
-    
     this.updateRotation(dt * 10);
   }
   
   updateRotation(speed) {
-    // Smooth rotation (slerp-like for euler angles)
     let currentRot = this.player.rotation.y;
     
-    // Fix wrap-around issues
     let diff = this.targetRotation - currentRot;
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;

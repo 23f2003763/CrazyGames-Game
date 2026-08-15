@@ -8,15 +8,20 @@ export class IsometricCamera {
     // Isometric angle parameters
     this.pitch = THREE.MathUtils.degToRad(50);
     this.yaw = THREE.MathUtils.degToRad(45);
-    this.distance = 45;
-    this.minDistance = 24;
-    this.maxDistance = 88;
+    
+    // Zoom limits
+    this.gameplayMinDist = 27;
+    this.gameplayMaxDist = 37;
+    this.inspectionMinDist = 24;
+    this.inspectionMaxDist = 88;
+    
+    this.distance = 31.5; // Commercial gameplay default distance
 
-    // Modes
-    this.mode = 'gameplay'; // 'gameplay' | 'inspection'
-    this.player = null; // Reference to player for following
+    // Modes: 'gameplay' | 'inspection'
+    this.mode = 'gameplay';
+    this.player = null;
 
-    // Camera target position in world space
+    // Target positions in world space
     this.target = new THREE.Vector3(0, 0, 0);
     this.desiredTarget = new THREE.Vector3(0, 0, 0);
 
@@ -26,7 +31,7 @@ export class IsometricCamera {
 
     // Perspective Camera setup
     const aspect = window.innerWidth / window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(42, aspect, 0.5, 1200);
+    this.camera = new THREE.PerspectiveCamera(40, aspect, 0.5, 1200);
     this.updateCameraTransform();
 
     // Interaction state
@@ -35,6 +40,10 @@ export class IsometricCamera {
     this.previousMousePosition = { x: 0, y: 0 };
     this.panSpeed = 55;
 
+    // Debug callback hooks for F7 / F9
+    this.onToggleColliders = null;
+    this.onToggleWalkable = null;
+
     this.bindEvents();
     this.setMode('gameplay');
   }
@@ -42,24 +51,25 @@ export class IsometricCamera {
   setPlayer(player) {
     this.player = player;
     if (this.player) {
-      this.target.copy(this.player.position);
       this.desiredTarget.copy(this.player.position);
+      this.target.copy(this.player.position);
       this.updateCameraTransform();
     }
   }
 
   setMode(newMode) {
     this.mode = newMode;
-    const hud = document.getElementById('debug-nav');
+    const hud = document.getElementById('inspector-hud');
     
     if (this.mode === 'gameplay') {
       if (hud) hud.style.display = 'none';
       if (this.player) {
         this.desiredTarget.copy(this.player.position);
       }
-      this.distance = 45; // Default gameplay distance
+      this.distance = THREE.MathUtils.clamp(this.distance, this.gameplayMinDist, this.gameplayMaxDist);
     } else {
       if (hud) hud.style.display = 'flex';
+      this.distance = THREE.MathUtils.clamp(this.distance, this.inspectionMinDist, this.inspectionMaxDist);
     }
   }
 
@@ -88,14 +98,14 @@ export class IsometricCamera {
     const cl = CLEARINGS.find(c => c.id === clearingId);
     if (cl) {
       const framingConfig = {
-        start:      { y: 3.0, dist: 48 },
-        gasStation: { y: 3.0, dist: 48 },
-        ravine:     { y: 2.5, dist: 52 },
-        camp:       { y: 2.5, dist: 48 },
-        checkpoint: { y: 2.5, dist: 46 },
-        farm:       { y: 2.0, dist: 60 },
+        start:      { y: 2.5, dist: 42 },
+        gasStation: { y: 2.5, dist: 44 },
+        ravine:     { y: 2.0, dist: 46 },
+        camp:       { y: 2.0, dist: 42 },
+        checkpoint: { y: 2.2, dist: 44 },
+        farm:       { y: 2.0, dist: 55 },
       };
-      const cfg = framingConfig[clearingId] || { y: 2.0, dist: 60 };
+      const cfg = framingConfig[clearingId] || { y: 2.0, dist: 50 };
       this.desiredTarget.set(cl.x, cfg.y, cl.z);
       this.distance = cfg.dist;
 
@@ -114,13 +124,25 @@ export class IsometricCamera {
     window.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
 
-      // F8 Toggle
+      // F8 Toggle Inspection HUD
       if (e.code === 'F8') {
         e.preventDefault();
         this.toggleMode();
       }
 
-      // Quick POI hotkeys [1 - 6]
+      // F7 Toggle Collider Visualization
+      if (e.code === 'F7') {
+        e.preventDefault();
+        if (this.onToggleColliders) this.onToggleColliders();
+      }
+
+      // F9 Toggle Walkable Surface Visualization
+      if (e.code === 'F9') {
+        e.preventDefault();
+        if (this.onToggleWalkable) this.onToggleWalkable();
+      }
+
+      // Quick POI hotkeys [1 - 6] in inspection mode
       if (this.mode === 'inspection' && e.key >= '1' && e.key <= '6') {
         const idx = parseInt(e.key, 10) - 1;
         if (CLEARINGS[idx]) {
@@ -155,8 +177,8 @@ export class IsometricCamera {
       this.desiredTarget.x += moveX;
       this.desiredTarget.z += moveZ;
 
-      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
-      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
+      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -115, 115);
+      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -85, 85);
     });
 
     window.addEventListener('mouseup', () => {
@@ -164,13 +186,14 @@ export class IsometricCamera {
     });
 
     this.domElement.addEventListener('contextmenu', (e) => {
-       if (this.mode === 'inspection') e.preventDefault();
+      if (this.mode === 'inspection') e.preventDefault();
     });
 
     window.addEventListener('wheel', (e) => {
-      // Allow zooming in both modes, but maybe restrict gameplay mode more later
-      this.distance += e.deltaY * 0.05;
-      this.distance = THREE.MathUtils.clamp(this.distance, this.minDistance, this.maxDistance);
+      this.distance += e.deltaY * 0.04;
+      const minD = this.mode === 'gameplay' ? this.gameplayMinDist : this.inspectionMinDist;
+      const maxD = this.mode === 'gameplay' ? this.gameplayMaxDist : this.inspectionMaxDist;
+      this.distance = THREE.MathUtils.clamp(this.distance, minD, maxD);
     }, { passive: true });
 
     const chips = document.querySelectorAll('.nav-chip');
@@ -190,16 +213,18 @@ export class IsometricCamera {
   update(deltaTime) {
     if (this.mode === 'gameplay') {
       if (this.player) {
-        // Follow player with slight lead
-        // The lead could be based on player velocity, but for now simple follow
+        // Player sits ~57% down screen vertically by applying a slight look-forward target lead
         this.desiredTarget.copy(this.player.position);
+        
+        const leadOffset = 2.2;
+        this.desiredTarget.x -= Math.sin(this.yaw) * leadOffset;
+        this.desiredTarget.z -= Math.cos(this.yaw) * leadOffset;
       }
     } else {
       // Inspection mode panning
       let moveForward = 0;
       let moveRight = 0;
 
-      // Only allow WASD panning in inspection mode to not fight player controls
       if (this.keys['KeyW'] || this.keys['ArrowUp']) moveForward -= 1;
       if (this.keys['KeyS'] || this.keys['ArrowDown']) moveForward += 1;
       if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveRight -= 1;
@@ -217,13 +242,13 @@ export class IsometricCamera {
         this.desiredTarget.x += dx;
         this.desiredTarget.z += dz;
 
-        this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
-        this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
+        this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -115, 115);
+        this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -85, 85);
       }
     }
 
-    // Smooth lerp to desired target. Faster tracking in gameplay mode.
-    const lerpSpeed = this.mode === 'gameplay' ? 15 : 12;
+    // Smooth lerp to desired target
+    const lerpSpeed = this.mode === 'gameplay' ? 14 : 10;
     this.target.lerp(this.desiredTarget, 1 - Math.exp(-lerpSpeed * deltaTime));
 
     this.updateCameraTransform();

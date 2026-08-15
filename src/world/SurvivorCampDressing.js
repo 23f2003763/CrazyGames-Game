@@ -2,17 +2,8 @@ import * as THREE from 'three';
 import { getTerrainHeight } from './MapData.js';
 
 export class SurvivorCampDressing {
-    constructor(scene) {
-        this.scene = scene;
-        this.group = new THREE.Group();
-        this.scene.add(this.group);
-        
-        // Camp Center
-        this.cx = 36;
-        this.cz = -62;
-        this.cy = getTerrainHeight(this.cx, this.cz);
-        
-        this.group.position.set(this.cx, this.cy, this.cz);
+    constructor(root) {
+        this.group = root;
 
         this.buildGroundZones();
         this.buildCampfire();

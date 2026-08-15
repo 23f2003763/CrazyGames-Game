@@ -12,6 +12,7 @@ import { BrokenSpanGround } from './BrokenSpanGround.js';
 import { LocationGroundZones } from './LocationGroundZones.js';
 import { SurvivorCampDressing } from './SurvivorCampDressing.js';
 import { WorldAmbientFX } from '../vfx/WorldAmbientFX.js';
+import { LocationRegistry } from './LocationRegistry.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
@@ -26,6 +27,9 @@ export class World {
     this.scene = scene;
     this.factory = new PropFactory();
     
+    // Create Location Registry FIRST before ground zones or structures
+    this.locationRegistry = new LocationRegistry(this.scene);
+
     // Ambient Environmental VFX System (smoke plumes, flickering lamps, searchlights)
     this.ambientFX = new WorldAmbientFX(this.scene);
 
@@ -41,10 +45,10 @@ export class World {
     this.authoredDressing = new AuthoredDressing(this.scene);
 
     // Terrain integration ground zones for Relay and Gas Station
-    this.locationGroundZones = new LocationGroundZones(this.scene);
+    this.locationGroundZones = new LocationGroundZones(this.locationRegistry.roots);
 
     // Survivor Camp authored dressing (Clearing 4)
-    this.survivorCamp = new SurvivorCampDressing(this.scene);
+    this.survivorCamp = new SurvivorCampDressing(this.locationRegistry.roots.survivorCamp);
 
     // Load handcrafted GLB structures
     this.loadGasStation();
@@ -54,20 +58,15 @@ export class World {
   }
 
   loadBrokenSpan() {
-    this.brokenSpanGround = new BrokenSpanGround(this.scene);
+    this.brokenSpanGround = new BrokenSpanGround(this.locationRegistry.roots.brokenSpan);
 
     const loader = new GLTFLoader();
     loader.load('/models/broken_span.glb', (gltf) => {
       const model = gltf.scene;
       model.name = 'TheBrokenSpan_BridgeLandmark';
-
-      const posX = -5.0;
-      const posZ = 22.0;
-      const posY = getTerrainHeight(posX, posZ) + 0.02;
-
-      model.position.set(posX, posY, posZ);
-      model.rotation.y = Math.PI * 0.18;
-      model.scale.set(1.12, 1.12, 1.12);
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+      model.scale.set(1, 1, 1);
 
       model.traverse((child) => {
         if (child.isMesh) {
@@ -93,8 +92,8 @@ export class World {
         this.ambientFX.addSmokeEmitter(model, new THREE.Vector3(-6.5, 5.2, -1.4), 14, 0x2e3032, 1.3);
       }
 
-      this.scene.add(model);
-      console.log('The Broken Span bridge landmark loaded successfully at (-5, 22)');
+      this.locationRegistry.roots.brokenSpan.add(model);
+      console.log('The Broken Span bridge landmark loaded successfully');
     }, undefined, (error) => {
       console.error('Error loading broken span GLB:', error);
     });
@@ -105,15 +104,9 @@ export class World {
     loader.load('/models/military_checkpoint.glb', (gltf) => {
       const model = gltf.scene;
       model.name = 'MilitaryCheckpoint_OutpostOmega';
-      
-      const posX = 100.0;
-      const posZ = -72.0;
-      const posY = getTerrainHeight(posX, posZ) + 0.02;
-      
-      model.position.set(posX, posY, posZ);
-      // Orient entrance gate towards the incoming road approach from (88, -58)
-      model.rotation.y = -Math.PI * 0.28;
-      model.scale.set(1.15, 1.15, 1.15); // Chunky landmark scale
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+      model.scale.set(1, 1, 1);
 
       const oldHiddenPrefixes = [
         'Ground_',
@@ -155,10 +148,15 @@ export class World {
       fixMilitaryCheckpointLayout(model, this.ambientFX);
       addMilitaryWatchtowers(model);
 
-      // Load Hero Military Bunker asset and attach as child
       loader.load('/models/hero_military_bunker.glb', (bunkerGltf) => {
         const hero = bunkerGltf.scene;
         hero.name = 'HeroMilitaryBunker_Instance';
+        
+        // This is local to the OutpostOmegaRoot
+        // The original had position.set(-13.2, 0, 8.2) in the local coordinate space of the model BEFORE scaling?
+        // Wait! Previously, model had scale 1.15, and bunker was added to model. 
+        // We set model scale to 1.15 via LocationRegistry, so adding to model still inherits scale 1.15. 
+        // This is perfect.
         hero.position.set(-13.2, 0, 8.2);
         hero.rotation.y = Math.PI * 0.50;
         hero.scale.setScalar(1.08);
@@ -193,12 +191,12 @@ export class World {
         console.error('Error loading hero military bunker GLB:', err);
       });
 
-      this.scene.add(model);
+      this.locationRegistry.roots.outpostOmega.add(model);
       if (!this.militaryArenaGround) {
         this.militaryArenaGround =
-          new MilitaryArenaGround(this.scene);
+          new MilitaryArenaGround(this.locationRegistry.roots.outpostOmega);
       }
-      console.log('Military Checkpoint "OUTPOST OMEGA" loaded successfully at (100, -72)');
+      console.log('Military Checkpoint "OUTPOST OMEGA" loaded successfully');
     }, undefined, (error) => {
       console.error('Error loading military checkpoint GLB:', error);
     });
@@ -209,15 +207,9 @@ export class World {
     loader.load('/models/relay_hub.glb', (gltf) => {
       const model = gltf.scene;
       model.name = 'TheRelay_SurvivorHub';
-      
-      const posX = -95.0;
-      const posZ = 70.0;
-      const posY = getTerrainHeight(posX, posZ) + 0.02;
-      
-      model.position.set(posX, posY, posZ);
-      // Orient open gate and courtyard naturally facing the road exit
-      model.rotation.y = Math.PI * 0.42;
-      model.scale.set(1.15, 1.15, 1.15); // Chunky landmark scale
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+      model.scale.set(1, 1, 1);
 
       model.traverse((child) => {
         if (child.isMesh) {
@@ -243,8 +235,8 @@ export class World {
         this.ambientFX.addSmokeEmitter(model, new THREE.Vector3(0, 1.8, -2.5), 10, 0x3a3632, 1.0);
       }
 
-      this.scene.add(model);
-      console.log('Starting Survivor Hub "THE RELAY" loaded successfully at (-95, 70)');
+      this.locationRegistry.roots.relay.add(model);
+      console.log('Starting Survivor Hub "THE RELAY" loaded successfully');
     }, undefined, (error) => {
       console.error('Error loading relay hub GLB:', error);
     });
@@ -255,15 +247,9 @@ export class World {
     loader.load('/models/abandoned_gas_station.glb', (gltf) => {
       const model = gltf.scene;
       model.name = 'AbandonedGasStation';
-      
-      const posX = -66;
-      const posZ = -34;
-      const posY = getTerrainHeight(posX, posZ) + 0.02;
-      
-      model.position.set(posX, posY, posZ);
-      // Rotate 148 degrees to face storefront and pump island directly into isometric view
-      model.rotation.y = Math.PI * 0.82;
-      model.scale.set(1.15, 1.15, 1.15); // Exaggerated chunky landmark scale
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+      model.scale.set(1, 1, 1);
 
       model.traverse((child) => {
         if (child.isMesh) {
@@ -289,8 +275,8 @@ export class World {
         this.ambientFX.addSmokeEmitter(model, new THREE.Vector3(2.0, 4.2, -1.5), 8, 0x383632, 0.9);
       }
 
-      this.scene.add(model);
-      console.log('Landmark Abandoned Gas Station loaded successfully at (-66, -34)');
+      this.locationRegistry.roots.gasStation.add(model);
+      console.log('Landmark Abandoned Gas Station loaded successfully');
     }, undefined, (error) => {
       console.error('Error loading gas station GLB:', error);
     });

@@ -455,6 +455,8 @@ export class AuthoredDressing {
       const patch = new THREE.Mesh(patchGeo, asphaltMat);
       patch.position.set(pd.x, y, pd.z);
       patch.rotation.y = pd.rot;
+      patch.userData.isWalkable = true;
+      patch.userData.surfaceType = 'ground';
       patch.receiveShadow = true;
       this.group.add(patch);
     });

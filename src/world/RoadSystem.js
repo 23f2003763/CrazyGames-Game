@@ -99,6 +99,8 @@ export class RoadSystem {
     const roadMesh = new THREE.Mesh(geometry, material);
     roadMesh.receiveShadow = true;
     roadMesh.name = 'AsphaltHighway';
+    roadMesh.userData.isWalkable = true;
+    roadMesh.userData.surfaceType = 'road';
     this.group.add(roadMesh);
   }
 
