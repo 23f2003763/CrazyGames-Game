@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { IsometricCamera } from './camera/IsometricCamera.js';
 import { World } from './world/World.js';
 import { RenderPipeline } from './rendering/RenderPipeline.js';
+import { Player } from './player/Player.js';
+import { PlayerController } from './player/PlayerController.js';
+import { PlayerAnimator } from './player/PlayerAnimator.js';
+import { WorldCollision } from './physics/WorldCollision.js';
+import { MovementFX } from './vfx/MovementFX.js';
 
 /**
  * Main Application Orchestrator
@@ -27,6 +32,27 @@ class GameApp {
     // 4. World Environment & Procedural Map
     this.world = new World(this.scene);
 
+    // 5. Collision System
+    this.collision = new WorldCollision();
+    // Basic collision blockers for Relay
+    this.collision.addBox(-72, 57, 16, 16, 0); // Relay main building
+    this.collision.addBox(-85, 45, 4, 10, 0);  // South wall
+
+    // 6. Player Systems
+    this.player = new Player(this.scene);
+    this.playerController = new PlayerController(this.player, this.cameraController, this.collision);
+    this.playerAnimator = new PlayerAnimator(this.player);
+
+    // Set starting position inside Relay spawn
+    this.player.position.set(-80, 0, 50);
+    this.player.rotation.y = Math.PI * 0.75; // Face towards gate
+
+    // Connect camera to player
+    this.cameraController.setPlayer(this.player);
+
+    // 7. Movement VFX
+    this.movementFX = new MovementFX(this.scene);
+
     this.clock = new THREE.Clock();
     this.animate = this.animate.bind(this);
     this.onWindowResize = this.onWindowResize.bind(this);
@@ -51,7 +77,27 @@ class GameApp {
     const deltaTime = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    // 1. Update isometric camera position & smoothing
+    // 1. Input & Physics
+    this.playerController.update(deltaTime);
+
+    // 2. Animation
+    this.playerAnimator.update(deltaTime, this.playerController.velocity, this.playerController.state);
+
+    // 3. Movement VFX
+    if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
+      this.movementFX.emitDust(this.player.position.x, this.player.position.z, 2.0, 4);
+    } else if (this.playerController.state !== 'idle') {
+      this.movementFX.updateWalkSteps(
+        this.player.position.x, 
+        this.player.position.z, 
+        this.playerController.velocity.length(), 
+        deltaTime, 
+        elapsedTime
+      );
+    }
+    this.movementFX.update(deltaTime, this.cameraController.camera);
+
+    // 4. Update isometric camera position & smoothing
     this.cameraController.update(deltaTime);
 
     // 2. Subtle river stream water wave pulse

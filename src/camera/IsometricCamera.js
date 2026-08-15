@@ -1,25 +1,28 @@
 import * as THREE from 'three';
 import { CLEARINGS } from '../world/MapData.js';
 
-/**
- * Fixed Isometric-Style Camera Controller (45-55 degree downward pitch)
- * Step 1.1: Precision camera bounds clamping and zoom limits ensuring the
- * natural mountain perimeter fully envelops the viewport in all directions.
- */
 export class IsometricCamera {
   constructor(domElement) {
     this.domElement = domElement;
     
     // Isometric angle parameters
-    this.pitch = THREE.MathUtils.degToRad(50);  // 50 degrees downward pitch
-    this.yaw = THREE.MathUtils.degToRad(45);    // 45 degrees diagonal isometric angle
-    this.distance = 65;                        // Standard isometric distance
+    this.pitch = THREE.MathUtils.degToRad(50);
+    this.yaw = THREE.MathUtils.degToRad(45);
+    this.distance = 45;
     this.minDistance = 24;
-    this.maxDistance = 88;                     // Balanced max zoom to preserve scenery immersion
+    this.maxDistance = 88;
+
+    // Modes
+    this.mode = 'gameplay'; // 'gameplay' | 'inspection'
+    this.player = null; // Reference to player for following
 
     // Camera target position in world space
-    this.target = new THREE.Vector3(-95, 2.5, 70); // Starts at Road Head Overlook
-    this.desiredTarget = this.target.clone();
+    this.target = new THREE.Vector3(0, 0, 0);
+    this.desiredTarget = new THREE.Vector3(0, 0, 0);
+
+    // Provide a pivot object to expose our yaw rotation easily to PlayerController
+    this.pivot = new THREE.Object3D();
+    this.pivot.rotation.y = this.yaw;
 
     // Perspective Camera setup
     const aspect = window.innerWidth / window.innerHeight;
@@ -30,13 +33,42 @@ export class IsometricCamera {
     this.keys = {};
     this.isDragging = false;
     this.previousMousePosition = { x: 0, y: 0 };
-    this.panSpeed = 55; // Units per second via WASD
+    this.panSpeed = 55;
 
     this.bindEvents();
+    this.setMode('gameplay');
+  }
+
+  setPlayer(player) {
+    this.player = player;
+    if (this.player) {
+      this.target.copy(this.player.position);
+      this.desiredTarget.copy(this.player.position);
+      this.updateCameraTransform();
+    }
+  }
+
+  setMode(newMode) {
+    this.mode = newMode;
+    const hud = document.getElementById('debug-nav');
+    
+    if (this.mode === 'gameplay') {
+      if (hud) hud.style.display = 'none';
+      if (this.player) {
+        this.desiredTarget.copy(this.player.position);
+      }
+      this.distance = 45; // Default gameplay distance
+    } else {
+      if (hud) hud.style.display = 'flex';
+    }
+  }
+
+  toggleMode() {
+    this.setMode(this.mode === 'gameplay' ? 'inspection' : 'gameplay');
   }
 
   updateCameraTransform() {
-    // Spherical offset from target using pitch and yaw
+    // Spherical offset from target
     const offsetX = this.distance * Math.sin(this.yaw) * Math.cos(this.pitch);
     const offsetY = this.distance * Math.sin(this.pitch);
     const offsetZ = this.distance * Math.cos(this.yaw) * Math.cos(this.pitch);
@@ -51,22 +83,22 @@ export class IsometricCamera {
   }
 
   jumpToClearing(clearingId) {
+    if (this.mode !== 'inspection') return;
+    
     const cl = CLEARINGS.find(c => c.id === clearingId);
     if (cl) {
-      // Per-location camera target and distance for strong hero compositions
       const framingConfig = {
-        start:      { y: 3.0, dist: 48 },  // Relay: close enough to see gate, walls, radio mast
-        gasStation: { y: 3.0, dist: 48 },  // Octane Mart: storefront, pumps, sign silhouette
-        ravine:     { y: 2.5, dist: 52 },  // Broken Span: bridge deck, riverbed, crossing
-        camp:       { y: 2.5, dist: 48 },  // Survivor Camp: tents, campfire, perimeter
-        checkpoint: { y: 2.5, dist: 46 },  // Outpost Omega: bunker, APC, dual watchtowers
-        farm:       { y: 2.0, dist: 60 },  // Farm: wide meadow clearing
+        start:      { y: 3.0, dist: 48 },
+        gasStation: { y: 3.0, dist: 48 },
+        ravine:     { y: 2.5, dist: 52 },
+        camp:       { y: 2.5, dist: 48 },
+        checkpoint: { y: 2.5, dist: 46 },
+        farm:       { y: 2.0, dist: 60 },
       };
       const cfg = framingConfig[clearingId] || { y: 2.0, dist: 60 };
       this.desiredTarget.set(cl.x, cfg.y, cl.z);
       this.distance = cfg.dist;
 
-      // Update UI active chip
       const chips = document.querySelectorAll('.nav-chip');
       chips.forEach(chip => {
         if (chip.dataset.poi === clearingId) {
@@ -79,12 +111,17 @@ export class IsometricCamera {
   }
 
   bindEvents() {
-    // Keyboard WASD / Arrows
     window.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
 
+      // F8 Toggle
+      if (e.code === 'F8') {
+        e.preventDefault();
+        this.toggleMode();
+      }
+
       // Quick POI hotkeys [1 - 6]
-      if (e.key >= '1' && e.key <= '6') {
+      if (this.mode === 'inspection' && e.key >= '1' && e.key <= '6') {
         const idx = parseInt(e.key, 10) - 1;
         if (CLEARINGS[idx]) {
           this.jumpToClearing(CLEARINGS[idx].id);
@@ -96,8 +133,8 @@ export class IsometricCamera {
       this.keys[e.code] = false;
     });
 
-    // Mouse drag pan
     this.domElement.addEventListener('mousedown', (e) => {
+      if (this.mode !== 'inspection') return;
       if (e.button === 0 || e.button === 2) {
         this.isDragging = true;
         this.previousMousePosition = { x: e.clientX, y: e.clientY };
@@ -105,13 +142,12 @@ export class IsometricCamera {
     });
 
     window.addEventListener('mousemove', (e) => {
-      if (!this.isDragging) return;
+      if (!this.isDragging || this.mode !== 'inspection') return;
 
       const deltaX = e.clientX - this.previousMousePosition.x;
       const deltaY = e.clientY - this.previousMousePosition.y;
       this.previousMousePosition = { x: e.clientX, y: e.clientY };
 
-      // Project screen delta into isometric ground plane
       const factor = (this.distance / 900);
       const moveX = -(deltaX * Math.cos(this.yaw) - deltaY * Math.sin(this.yaw)) * factor;
       const moveZ = -(deltaX * Math.sin(this.yaw) + deltaY * Math.cos(this.yaw)) * factor;
@@ -119,7 +155,6 @@ export class IsometricCamera {
       this.desiredTarget.x += moveX;
       this.desiredTarget.z += moveZ;
 
-      // Clamp within playable bounds
       this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
       this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
     });
@@ -128,46 +163,16 @@ export class IsometricCamera {
       this.isDragging = false;
     });
 
-    // Prevent default context menu on right click drag
-    this.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.domElement.addEventListener('contextmenu', (e) => {
+       if (this.mode === 'inspection') e.preventDefault();
+    });
 
-    // Mouse wheel zoom
     window.addEventListener('wheel', (e) => {
+      // Allow zooming in both modes, but maybe restrict gameplay mode more later
       this.distance += e.deltaY * 0.05;
       this.distance = THREE.MathUtils.clamp(this.distance, this.minDistance, this.maxDistance);
     }, { passive: true });
 
-    // Touch support for mobile/trackpad
-    let lastTouch = null;
-    this.domElement.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) {
-        lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    }, { passive: true });
-
-    this.domElement.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 1 && lastTouch) {
-        const deltaX = e.touches[0].clientX - lastTouch.x;
-        const deltaY = e.touches[0].clientY - lastTouch.y;
-        lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-
-        const factor = (this.distance / 800);
-        const moveX = -(deltaX * Math.cos(this.yaw) - deltaY * Math.sin(this.yaw)) * factor;
-        const moveZ = -(deltaX * Math.sin(this.yaw) + deltaY * Math.cos(this.yaw)) * factor;
-
-        this.desiredTarget.x += moveX;
-        this.desiredTarget.z += moveZ;
-
-        this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
-        this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
-      }
-    }, { passive: true });
-
-    this.domElement.addEventListener('touchend', () => {
-      lastTouch = null;
-    });
-
-    // HUD Nav Chips
     const chips = document.querySelectorAll('.nav-chip');
     chips.forEach(chip => {
       chip.addEventListener('click', () => {
@@ -176,44 +181,50 @@ export class IsometricCamera {
       });
     });
 
-    // Window resize
     window.addEventListener('resize', () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      this.camera.aspect = width / height;
+      this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
     });
   }
 
   update(deltaTime) {
-    // Keyboard panning relative to isometric angle
-    let moveForward = 0;
-    let moveRight = 0;
+    if (this.mode === 'gameplay') {
+      if (this.player) {
+        // Follow player with slight lead
+        // The lead could be based on player velocity, but for now simple follow
+        this.desiredTarget.copy(this.player.position);
+      }
+    } else {
+      // Inspection mode panning
+      let moveForward = 0;
+      let moveRight = 0;
 
-    if (this.keys['KeyW'] || this.keys['ArrowUp']) moveForward -= 1;
-    if (this.keys['KeyS'] || this.keys['ArrowDown']) moveForward += 1;
-    if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveRight -= 1;
-    if (this.keys['KeyD'] || this.keys['ArrowRight']) moveRight += 1;
+      // Only allow WASD panning in inspection mode to not fight player controls
+      if (this.keys['KeyW'] || this.keys['ArrowUp']) moveForward -= 1;
+      if (this.keys['KeyS'] || this.keys['ArrowDown']) moveForward += 1;
+      if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveRight -= 1;
+      if (this.keys['KeyD'] || this.keys['ArrowRight']) moveRight += 1;
 
-    if (moveForward !== 0 || moveRight !== 0) {
-      const len = Math.hypot(moveForward, moveRight);
-      const normF = moveForward / len;
-      const normR = moveRight / len;
+      if (moveForward !== 0 || moveRight !== 0) {
+        const len = Math.hypot(moveForward, moveRight);
+        const normF = moveForward / len;
+        const normR = moveRight / len;
 
-      const speed = this.panSpeed * (this.distance / 65) * deltaTime;
-      const dx = (normR * Math.cos(this.yaw) + normF * Math.sin(this.yaw)) * speed;
-      const dz = (-normR * Math.sin(this.yaw) + normF * Math.cos(this.yaw)) * speed;
+        const speed = this.panSpeed * (this.distance / 65) * deltaTime;
+        const dx = (normR * Math.cos(this.yaw) + normF * Math.sin(this.yaw)) * speed;
+        const dz = (-normR * Math.sin(this.yaw) + normF * Math.cos(this.yaw)) * speed;
 
-      this.desiredTarget.x += dx;
-      this.desiredTarget.z += dz;
+        this.desiredTarget.x += dx;
+        this.desiredTarget.z += dz;
 
-      // Clamp within playable bounds
-      this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
-      this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
+        this.desiredTarget.x = THREE.MathUtils.clamp(this.desiredTarget.x, -105, 105);
+        this.desiredTarget.z = THREE.MathUtils.clamp(this.desiredTarget.z, -75, 75);
+      }
     }
 
-    // Smooth lerp to desired target
-    this.target.lerp(this.desiredTarget, 1 - Math.exp(-12 * deltaTime));
+    // Smooth lerp to desired target. Faster tracking in gameplay mode.
+    const lerpSpeed = this.mode === 'gameplay' ? 15 : 12;
+    this.target.lerp(this.desiredTarget, 1 - Math.exp(-lerpSpeed * deltaTime));
 
     this.updateCameraTransform();
   }
