@@ -30,6 +30,48 @@ export class World {
 
     // Load handcrafted GLB structures
     this.loadGasStation();
+    this.loadRelayHub();
+  }
+
+  loadRelayHub() {
+    const loader = new GLTFLoader();
+    loader.load('/models/relay_hub.glb', (gltf) => {
+      const model = gltf.scene;
+      model.name = 'TheRelay_SurvivorHub';
+      
+      const posX = -95.0;
+      const posZ = 70.0;
+      const posY = getTerrainHeight(posX, posZ) + 0.02;
+      
+      model.position.set(posX, posY, posZ);
+      // Orient open gate and courtyard naturally facing the road exit
+      model.rotation.y = Math.PI * 0.42;
+      model.scale.set(1.15, 1.15, 1.15); // Chunky landmark scale
+
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material.flatShading = true;
+            child.material.roughness = THREE.MathUtils.clamp(child.material.roughness ?? 0.7, 0.35, 0.95);
+            child.material.metalness = THREE.MathUtils.clamp(child.material.metalness ?? 0.0, 0.0, 0.75);
+            if (child.material.map) {
+              child.material.map.colorSpace = THREE.SRGBColorSpace;
+            }
+            if (child.material.emissiveMap) {
+              child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            }
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      this.scene.add(model);
+      console.log('Starting Survivor Hub "THE RELAY" loaded successfully at (-95, 70)');
+    }, undefined, (error) => {
+      console.error('Error loading relay hub GLB:', error);
+    });
   }
 
   loadGasStation() {

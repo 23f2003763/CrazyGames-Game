@@ -78,9 +78,9 @@ export const CLEARINGS = [
     name: '1. Road Head Overlook',
     x: -95,
     z: 70,
-    radius: 20,
-    description: 'Elevated highway entrance with broken barricades and perimeter vista',
-    targetCameraPos: new THREE.Vector3(-95, 0, 70),
+    radius: 26,
+    description: 'The Relay - Fortified starting survivor hub with radio mast, workbench, generator, and campfire',
+    targetCameraPos: new THREE.Vector3(-95, 2.0, 70),
   },
   {
     id: 'gasStation',

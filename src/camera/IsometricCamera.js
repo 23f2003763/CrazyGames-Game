@@ -54,8 +54,8 @@ export class IsometricCamera {
     const cl = CLEARINGS.find(c => c.id === clearingId);
     if (cl) {
       this.desiredTarget.set(cl.x, 2.0, cl.z);
-      // Closer cinematic landmark framing for gas station
-      if (clearingId === 'gasStation') {
+      // Closer cinematic landmark framing for key POI hubs
+      if (clearingId === 'start' || clearingId === 'gasStation') {
         this.distance = 52;
       } else {
         this.distance = 65;
