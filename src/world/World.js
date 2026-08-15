@@ -51,7 +51,7 @@ export class World {
       model.rotation.y = -Math.PI * 0.28;
       model.scale.set(1.15, 1.15, 1.15); // Chunky landmark scale
 
-      const oldGroundPrefixes = [
+      const oldHiddenPrefixes = [
         'Ground_',
         'Zone',
         'Combat_Chunk_',
@@ -62,7 +62,7 @@ export class World {
 
       model.traverse((child) => {
         if (
-          oldGroundPrefixes.some(prefix =>
+          oldHiddenPrefixes.some(prefix =>
             child.name.startsWith(prefix)
           )
         ) {
@@ -90,8 +90,38 @@ export class World {
       // Apply runtime structure recomposition and material enhancements
       fixMilitaryCheckpointLayout(model);
 
-      // Load new handcrafted Hero Military Bunker GLB
-      this.loadHeroBunker(model);
+      // Load Hero Military Bunker asset and attach as child
+      loader.load('/models/hero_military_bunker.glb', (bunkerGltf) => {
+        const hero = bunkerGltf.scene;
+        hero.name = 'HeroMilitaryBunker_Instance';
+        hero.position.set(-14, 0, 9);
+        hero.rotation.y = 0;
+        hero.scale.setScalar(1.15);
+
+        hero.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (child.material) {
+              child.material.flatShading = true;
+              child.material.roughness = THREE.MathUtils.clamp(child.material.roughness ?? 0.7, 0.35, 0.95);
+              child.material.metalness = THREE.MathUtils.clamp(child.material.metalness ?? 0.0, 0.0, 0.75);
+              if (child.material.map) {
+                child.material.map.colorSpace = THREE.SRGBColorSpace;
+              }
+              if (child.material.emissiveMap) {
+                child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+              }
+              child.material.needsUpdate = true;
+            }
+          }
+        });
+
+        model.add(hero);
+        console.log('Hero Military Bunker attached as child to Checkpoint model');
+      }, undefined, (err) => {
+        console.error('Error loading hero military bunker GLB:', err);
+      });
 
       this.scene.add(model);
       if (!this.militaryArenaGround) {
@@ -101,34 +131,6 @@ export class World {
       console.log('Military Checkpoint "OUTPOST OMEGA" loaded successfully at (100, -72)');
     }, undefined, (error) => {
       console.error('Error loading military checkpoint GLB:', error);
-    });
-  }
-
-  loadHeroBunker(parentModel) {
-    const loader = new GLTFLoader();
-    loader.load('/models/hero_military_bunker.glb', (gltf) => {
-      const bunker = gltf.scene;
-      bunker.name = 'HeroMilitaryBunker';
-      bunker.position.set(-13.5, 0.0, 8.5);
-      bunker.scale.set(1.05, 1.05, 1.05);
-
-      bunker.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-          if (child.material) {
-            child.material.flatShading = true;
-            if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
-            if (child.material.emissiveMap) child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
-            child.material.needsUpdate = true;
-          }
-        }
-      });
-
-      parentModel.add(bunker);
-      console.log('Hero Military Bunker loaded successfully into Military Checkpoint');
-    }, undefined, (error) => {
-      console.error('Error loading hero military bunker GLB:', error);
     });
   }
 
