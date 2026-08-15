@@ -59,7 +59,12 @@ class GameApp {
       this.world.terrain.waterMesh.position.y = Math.sin(elapsedTime * 1.5) * 0.04;
     }
 
-    // 3. Render scene via EffectComposer (RenderPass -> UnrealBloomPass -> OutputPass)
+    // 3. Update ambient environmental VFX (smoke plumes, flickering lamps, searchlights)
+    if (this.world?.ambientFX) {
+      this.world.ambientFX.update(deltaTime);
+    }
+
+    // 4. Render scene via EffectComposer (RenderPass -> UnrealBloomPass -> OutputPass)
     // with dynamic tight shadow tracking aligned to active camera target
     this.renderPipeline.render(deltaTime, this.cameraController.target);
   }

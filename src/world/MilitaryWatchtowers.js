@@ -95,31 +95,37 @@ function buildTower(name) {
   // Hazard stripe
   box(g, [3.5, 0.18, 0.18], [0, 5.95, -2.2], YELLOW);
 
-  // Search light body
+  // Searchlight Head (Rotating Assembly)
+  const searchlightHead = new THREE.Group();
+  searchlightHead.name = 'SearchlightHead';
+  searchlightHead.position.set(1.35, 7.2, -1.9);
+
   const lightBody = cylinder(
-    g,
+    searchlightHead,
     0.38,
     0.7,
-    [1.35, 7.2, -1.9],
+    [0, 0, 0],
     DARK
   );
   lightBody.rotation.x = Math.PI / 2;
 
-  // Search light lens
+  // Search light lens with warm emissive glow
   const lensMat = new THREE.MeshStandardMaterial({
     color: 0xffc84a,
     emissive: 0xff8a20,
-    emissiveIntensity: 2.2,
+    emissiveIntensity: 2.4,
     roughness: 0.3
   });
+  lensMat.name = 'SearchlightLensMat';
 
   const lens = new THREE.Mesh(
     new THREE.CircleGeometry(0.31, 10),
     lensMat
   );
+  lens.position.set(0, 0, -0.37);
+  searchlightHead.add(lens);
 
-  lens.position.set(1.35, 7.2, -2.27);
-  g.add(lens);
+  g.add(searchlightHead);
 
   // Ladder
   for (let y = 0.9; y < 5.4; y += 0.65) {
@@ -149,8 +155,9 @@ export function addMilitaryWatchtowers(checkpointModel) {
   west.scale.setScalar(1.08);
 
   const east = buildTower('HeroWatchtower_East');
-  east.position.set(15.5, 0, 9.5);
-  east.rotation.y = -0.55;
+  // Position East tower prominently on right flank to cleanly frame the arena
+  east.position.set(16.0, 0, 2.5);
+  east.rotation.y = -0.65;
   east.scale.setScalar(1.08);
 
   checkpointModel.add(west);

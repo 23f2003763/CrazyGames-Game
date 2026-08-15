@@ -96,9 +96,9 @@ export const CLEARINGS = [
     name: '3. Dry Riverbed Crossing',
     x: -5,
     z: 22,
-    radius: 22,
-    description: 'Cracked bridge crossing sunken gravel creek with boulders and willow trees',
-    targetCameraPos: new THREE.Vector3(-5, 0, 22),
+    radius: 24,
+    description: 'The Broken Span - Destroyed highway bridge crossing sunken riverbed with turquoise pools and survivor footbridge',
+    targetCameraPos: new THREE.Vector3(-5, 2.0, 22),
   },
   {
     id: 'camp',

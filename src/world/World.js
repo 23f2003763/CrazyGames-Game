@@ -8,18 +8,25 @@ import { AuthoredDressing } from './AuthoredDressing.js';
 import { MilitaryArenaGround } from './MilitaryArenaGround.js';
 import { fixMilitaryCheckpointLayout } from './MilitaryCheckpointLayout.js';
 import { addMilitaryWatchtowers } from './MilitaryWatchtowers.js';
+import { BrokenSpanGround } from './BrokenSpanGround.js';
+import { WorldAmbientFX } from '../vfx/WorldAmbientFX.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
  * foliage, and reserved clearing zones.
  * Step 2.1: Loads and integrates the custom Blender low-poly Abandoned Gas Station.
  * Step 2.3: Handcrafted authored dressing for the 40-50m approach corridor.
+ * Step 2.5: Fortified Military Checkpoint (Outpost Omega) with ambient VFX.
+ * Clearing 3: The Broken Span highway bridge landmark.
  */
 export class World {
   constructor(scene) {
     this.scene = scene;
     this.factory = new PropFactory();
     
+    // Ambient Environmental VFX System (smoke plumes, flickering lamps, searchlights)
+    this.ambientFX = new WorldAmbientFX(this.scene);
+
     // Core systems
     this.terrain = new Terrain(this.scene);
     this.roadSystem = new RoadSystem(this.scene);
@@ -35,6 +42,54 @@ export class World {
     this.loadGasStation();
     this.loadRelayHub();
     this.loadMilitaryCheckpoint();
+    this.loadBrokenSpan();
+  }
+
+  loadBrokenSpan() {
+    this.brokenSpanGround = new BrokenSpanGround(this.scene);
+
+    const loader = new GLTFLoader();
+    loader.load('/models/broken_span.glb', (gltf) => {
+      const model = gltf.scene;
+      model.name = 'TheBrokenSpan_BridgeLandmark';
+
+      const posX = -5.0;
+      const posZ = 22.0;
+      const posY = getTerrainHeight(posX, posZ) + 0.02;
+
+      model.position.set(posX, posY, posZ);
+      model.rotation.y = Math.PI * 0.18;
+      model.scale.set(1.12, 1.12, 1.12);
+
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material.flatShading = true;
+            child.material.roughness = THREE.MathUtils.clamp(child.material.roughness ?? 0.7, 0.35, 0.95);
+            child.material.metalness = THREE.MathUtils.clamp(child.material.metalness ?? 0.0, 0.0, 0.65);
+            if (child.material.map) {
+              child.material.map.colorSpace = THREE.SRGBColorSpace;
+            }
+            if (child.material.emissiveMap) {
+              child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            }
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      // Add gentle ambient smoke plume from crashed car on bridge
+      if (this.ambientFX) {
+        this.ambientFX.addSmokeEmitter(model, new THREE.Vector3(-6.5, 5.2, -1.4), 14, 0x2e3032, 1.3);
+      }
+
+      this.scene.add(model);
+      console.log('The Broken Span bridge landmark loaded successfully at (-5, 22)');
+    }, undefined, (error) => {
+      console.error('Error loading broken span GLB:', error);
+    });
   }
 
   loadMilitaryCheckpoint() {
@@ -88,8 +143,8 @@ export class World {
         }
       });
 
-      // Apply runtime structure recomposition and material enhancements
-      fixMilitaryCheckpointLayout(model);
+      // Apply runtime structure recomposition, perimeter fencing, and ambient VFX
+      fixMilitaryCheckpointLayout(model, this.ambientFX);
       addMilitaryWatchtowers(model);
 
       // Load Hero Military Bunker asset and attach as child
@@ -118,6 +173,11 @@ export class World {
             }
           }
         });
+
+        // Add subtle smoke plume from damaged bunker roof chunk
+        if (this.ambientFX) {
+          this.ambientFX.addSmokeEmitter(hero, new THREE.Vector3(6.5, 4.8, 3.8), 12, 0x323436, 1.1);
+        }
 
         model.add(hero);
         console.log('Hero Military Bunker attached as child to Checkpoint model');
