@@ -53,17 +53,19 @@ export class IsometricCamera {
   jumpToClearing(clearingId) {
     const cl = CLEARINGS.find(c => c.id === clearingId);
     if (cl) {
-      this.desiredTarget.set(cl.x, 2.0, cl.z);
-      // Closer cinematic landmark framing for key POI hubs & combat arena
-      if (clearingId === 'checkpoint') {
-        this.distance = 46;
-      } else if (clearingId === 'ravine') {
-        this.distance = 52;
-      } else if (clearingId === 'start' || clearingId === 'gasStation') {
-        this.distance = 50;
-      } else {
-        this.distance = 65;
-      }
+      // Per-location camera target and distance for strong hero compositions
+      const framingConfig = {
+        start:      { y: 3.0, dist: 48 },  // Relay: close enough to see gate, walls, radio mast
+        gasStation: { y: 3.0, dist: 48 },  // Octane Mart: storefront, pumps, sign silhouette
+        ravine:     { y: 2.5, dist: 52 },  // Broken Span: bridge deck, riverbed, crossing
+        camp:       { y: 2.5, dist: 48 },  // Survivor Camp: tents, campfire, perimeter
+        checkpoint: { y: 2.5, dist: 46 },  // Outpost Omega: bunker, APC, dual watchtowers
+        farm:       { y: 2.0, dist: 60 },  // Farm: wide meadow clearing
+      };
+      const cfg = framingConfig[clearingId] || { y: 2.0, dist: 60 };
+      this.desiredTarget.set(cl.x, cfg.y, cl.z);
+      this.distance = cfg.dist;
+
       // Update UI active chip
       const chips = document.querySelectorAll('.nav-chip');
       chips.forEach(chip => {

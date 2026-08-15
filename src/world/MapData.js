@@ -79,8 +79,8 @@ export const CLEARINGS = [
     x: -95,
     z: 70,
     radius: 26,
-    description: 'The Relay - Fortified starting survivor hub with radio mast, workbench, generator, and campfire',
-    targetCameraPos: new THREE.Vector3(-95, 2.0, 70),
+    description: 'The Relay - Fortified home base with radio mast, campfire, generator, and warm survivor architecture',
+    targetCameraPos: new THREE.Vector3(-95, 3.0, 70),
   },
   {
     id: 'gasStation',
@@ -88,8 +88,8 @@ export const CLEARINGS = [
     x: -66,
     z: -34,
     radius: 30,
-    description: 'Post-apocalyptic landmark gas station with store, pumps, car wreck, and collapsed canopy',
-    targetCameraPos: new THREE.Vector3(-66, 2.2, -34),
+    description: 'Octane Mart - Abandoned roadside gas station with storefront, pumps, canopy, and 3D OCTANE sign',
+    targetCameraPos: new THREE.Vector3(-66, 3.0, -34),
   },
   {
     id: 'ravine',
@@ -106,8 +106,8 @@ export const CLEARINGS = [
     x: 36,
     z: -62,
     radius: 28,
-    description: 'Defensible forested clearing reserved for survivor shelters and campfires',
-    targetCameraPos: new THREE.Vector3(36, 0, -62),
+    description: 'Temporary survivor encampment with tents, campfire, supply stacks, and stake perimeter',
+    targetCameraPos: new THREE.Vector3(36, 2.5, -62),
   },
   {
     id: 'checkpoint',

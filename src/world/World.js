@@ -9,15 +9,17 @@ import { MilitaryArenaGround } from './MilitaryArenaGround.js';
 import { fixMilitaryCheckpointLayout } from './MilitaryCheckpointLayout.js';
 import { addMilitaryWatchtowers } from './MilitaryWatchtowers.js';
 import { BrokenSpanGround } from './BrokenSpanGround.js';
+import { LocationGroundZones } from './LocationGroundZones.js';
+import { SurvivorCampDressing } from './SurvivorCampDressing.js';
 import { WorldAmbientFX } from '../vfx/WorldAmbientFX.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
  * foliage, and reserved clearing zones.
- * Step 2.1: Loads and integrates the custom Blender low-poly Abandoned Gas Station.
- * Step 2.3: Handcrafted authored dressing for the 40-50m approach corridor.
- * Step 2.5: Fortified Military Checkpoint (Outpost Omega) with ambient VFX.
- * Clearing 3: The Broken Span highway bridge landmark.
+ * 
+ * ART DIRECTION RESET: Clearings 1-5 are cohesive vertical-slice quality.
+ * Each location has: authored ground zones, landmark identity, road connection,
+ * terrain integration, and ambient VFX.
  */
 export class World {
   constructor(scene) {
@@ -37,6 +39,12 @@ export class World {
 
     // Handcrafted authored dressing around gas station approach
     this.authoredDressing = new AuthoredDressing(this.scene);
+
+    // Terrain integration ground zones for Relay and Gas Station
+    this.locationGroundZones = new LocationGroundZones(this.scene);
+
+    // Survivor Camp authored dressing (Clearing 4)
+    this.survivorCamp = new SurvivorCampDressing(this.scene);
 
     // Load handcrafted GLB structures
     this.loadGasStation();
@@ -230,6 +238,11 @@ export class World {
         }
       });
 
+      // Warm ambient VFX: gentle smoke from campfire area
+      if (this.ambientFX) {
+        this.ambientFX.addSmokeEmitter(model, new THREE.Vector3(0, 1.8, -2.5), 10, 0x3a3632, 1.0);
+      }
+
       this.scene.add(model);
       console.log('Starting Survivor Hub "THE RELAY" loaded successfully at (-95, 70)');
     }, undefined, (error) => {
@@ -270,6 +283,11 @@ export class World {
           }
         }
       });
+
+      // Ambient VFX: gentle smoke from damaged canopy/vehicle area
+      if (this.ambientFX) {
+        this.ambientFX.addSmokeEmitter(model, new THREE.Vector3(2.0, 4.2, -1.5), 8, 0x383632, 0.9);
+      }
 
       this.scene.add(model);
       console.log('Landmark Abandoned Gas Station loaded successfully at (-66, -34)');
