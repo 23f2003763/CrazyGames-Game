@@ -94,9 +94,9 @@ export class World {
       loader.load('/models/hero_military_bunker.glb', (bunkerGltf) => {
         const hero = bunkerGltf.scene;
         hero.name = 'HeroMilitaryBunker_Instance';
-        hero.position.set(-14, 0, 9);
-        hero.rotation.y = 0;
-        hero.scale.setScalar(1.15);
+        hero.position.set(-13.2, 0, 8.2);
+        hero.rotation.y = Math.PI * 0.50;
+        hero.scale.setScalar(1.08);
 
         hero.traverse((child) => {
           if (child.isMesh) {
