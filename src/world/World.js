@@ -31,6 +31,48 @@ export class World {
     // Load handcrafted GLB structures
     this.loadGasStation();
     this.loadRelayHub();
+    this.loadMilitaryCheckpoint();
+  }
+
+  loadMilitaryCheckpoint() {
+    const loader = new GLTFLoader();
+    loader.load('/models/military_checkpoint.glb', (gltf) => {
+      const model = gltf.scene;
+      model.name = 'MilitaryCheckpoint_OutpostOmega';
+      
+      const posX = 100.0;
+      const posZ = -72.0;
+      const posY = getTerrainHeight(posX, posZ) + 0.02;
+      
+      model.position.set(posX, posY, posZ);
+      // Orient entrance gate towards the incoming road approach from (88, -58)
+      model.rotation.y = -Math.PI * 0.28;
+      model.scale.set(1.15, 1.15, 1.15); // Chunky landmark scale
+
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material.flatShading = true;
+            child.material.roughness = THREE.MathUtils.clamp(child.material.roughness ?? 0.7, 0.35, 0.95);
+            child.material.metalness = THREE.MathUtils.clamp(child.material.metalness ?? 0.0, 0.0, 0.75);
+            if (child.material.map) {
+              child.material.map.colorSpace = THREE.SRGBColorSpace;
+            }
+            if (child.material.emissiveMap) {
+              child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            }
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      this.scene.add(model);
+      console.log('Military Checkpoint "OUTPOST OMEGA" loaded successfully at (100, -72)');
+    }, undefined, (error) => {
+      console.error('Error loading military checkpoint GLB:', error);
+    });
   }
 
   loadRelayHub() {
