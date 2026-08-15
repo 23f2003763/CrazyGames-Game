@@ -230,4 +230,75 @@ export class PropFactory {
     geom.center();
     return geom;
   }
+
+  createTree(type = 'pine', scale = 1.0) {
+    const grp = new THREE.Group();
+    grp.scale.set(scale, scale, scale);
+
+    if (type === 'pine') {
+      const trunk = new THREE.Mesh(this.geometries.pineTrunk, this.materials.woodTrunk);
+      trunk.position.y = 1.6;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+
+      const t1 = new THREE.Mesh(this.geometries.pineTierBottom, this.materials.pineFoliageDark);
+      t1.position.y = 3.5;
+      t1.castShadow = true;
+
+      const t2 = new THREE.Mesh(this.geometries.pineTierMid, this.materials.pineFoliageLight);
+      t2.position.y = 4.8;
+      t2.castShadow = true;
+
+      const t3 = new THREE.Mesh(this.geometries.pineTierTop, this.materials.pineFoliageDark);
+      t3.position.y = 6.0;
+      t3.castShadow = true;
+
+      grp.add(trunk, t1, t2, t3);
+    } else if (type === 'oak') {
+      const trunk = new THREE.Mesh(this.geometries.oakTrunk, this.materials.woodTrunk);
+      trunk.position.y = 1.5;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+
+      const cMain = new THREE.Mesh(this.geometries.oakCanopyMain, this.materials.oakFoliageGreen);
+      cMain.position.y = 3.8;
+      cMain.castShadow = true;
+
+      const cSub = new THREE.Mesh(this.geometries.oakCanopySub, this.materials.oakFoliageAutumn);
+      cSub.position.set(0.8, 4.4, 0.4);
+      cSub.castShadow = true;
+
+      grp.add(trunk, cMain, cSub);
+    } else if (type === 'birch') {
+      const trunk = new THREE.Mesh(this.geometries.birchTrunk, this.materials.birchTrunk);
+      trunk.position.y = 2.1;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+
+      const canopy = new THREE.Mesh(this.geometries.birchCanopy, this.materials.birchFoliage);
+      canopy.position.y = 4.6;
+      canopy.castShadow = true;
+
+      grp.add(trunk, canopy);
+    } else { // 'dead'
+      const trunk = new THREE.Mesh(this.geometries.deadTrunk, this.materials.deadWood);
+      trunk.position.y = 1.75;
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+
+      const b1 = new THREE.Mesh(this.geometries.deadBranch1, this.materials.deadWood);
+      b1.position.set(0.4, 3.2, 0);
+      b1.rotation.z = -0.5;
+      b1.castShadow = true;
+
+      const b2 = new THREE.Mesh(this.geometries.deadBranch2, this.materials.deadWood);
+      b2.position.set(-0.3, 2.7, 0.3);
+      b2.rotation.set(0.4, 0, 0.6);
+      b2.castShadow = true;
+
+      grp.add(trunk, b1, b2);
+    }
+
+    return grp;
+  }
 }
