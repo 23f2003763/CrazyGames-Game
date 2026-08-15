@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Isometric Zombie Road - World Map</title>
+  <link rel="stylesheet" href="/style.css">
+  <!-- CrazyGames SDK v3 (ready for subsequent steps) -->
+  <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="canvas-container"></div>
+  
+  <!-- Subtle minimal inspection controls overlay for Step 1 -->
+  <div id="inspector-hud">
+    <div class="hud-pill">
+      <span class="hud-tag">MAP INSPECTION MODE</span>
+      <span class="hud-sub">WASD / Drag to Pan &bull; Scroll to Zoom &bull; [1-6] Jump to Clearings</span>
+    </div>
+    <div class="clearings-nav">
+      <button class="nav-chip active" data-poi="start">1. Road Head Overlook</button>
+      <button class="nav-chip" data-poi="gasStation">2. Gas Station Clearing</button>
+      <button class="nav-chip" data-poi="ravine">3. Dry Riverbed Crossing</button>
+      <button class="nav-chip" data-poi="camp">4. Survivor Camp Clearing</button>
+      <button class="nav-chip" data-poi="checkpoint">5. Military Checkpoint</button>
+      <button class="nav-chip" data-poi="farm">6. Overgrown Farm Clearing</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
