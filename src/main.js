@@ -41,6 +41,15 @@ class GameApp {
     this.walkableSurfaceSystem = new WalkableSurfaceSystem(this.scene);
     this.walkableSurfaceSystem.buildFromRoots(this.world.locationRegistry.roots);
 
+    // Rebuild collision and walkable surfaces whenever a location finishes loading
+    this.world.onLocationLoaded = (locName) => {
+      this.collision.buildFromRoots(this.world.locationRegistry.roots);
+      this.walkableSurfaceSystem.buildFromRoots(this.world.locationRegistry.roots);
+      if (locName === 'relay') {
+        this.spawnPlayerAtRelay();
+      }
+    };
+
     // 6. Playable Player Survivor (Ryder)
     this.player = new Player(this.scene);
     this.playerController = new PlayerController(

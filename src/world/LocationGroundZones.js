@@ -9,65 +9,59 @@ export class LocationGroundZones {
     buildRelayGround(root) {
         // 4. Perimeter transition - ring of mixed dirt/grass
         this.addPolygon(root, [
-            [-12, -10], [-8, -13], [0, -15], [9, -12], [14, -6],
-            [15, 3], [12, 10], [5, 14], [-4, 13], [-11, 8], [-14, 0]
+            [-14, -12], [-8, -14], [0, -15], [10, -13], [15, -6],
+            [15, 6], [12, 12], [5, 14], [-5, 13], [-12, 9], [-15, 0]
         ], 0x5a6a34, 0.00);
 
         // 1. Main base footprint - irregular beaten dirt polygon
         this.addPolygon(root, [
-            [-10, -8], [-5, -10], [2, -11], [7, -9], [11, -4],
-            [12, 2], [9, 8], [3, 11], [-3, 10], [-9, 6], [-11, 0]
+            [-11, -9], [-5, -11], [2, -11], [8, -9], [12, -4],
+            [12, 4], [9, 9], [3, 11], [-4, 10], [-10, 7], [-12, 0]
         ], 0x6e5a3c, 0.01);
 
-        // 2. Inner courtyard - slightly lighter packed earth
+        // 2. Inner courtyard - packed earth
         this.addPolygon(root, [
-            [-6, -4], [-2, -6], [3, -5], [6, -2],
-            [7, 3], [4, 6], [-1, 7], [-5, 4], [-7, 0]
+            [-8, -6], [-2, -7], [4, -6], [8, -2],
+            [8, 4], [4, 7], [-2, 7], [-7, 5], [-8, 0]
         ], 0x7a6a48, 0.02);
 
-        // 3. Road arrival approach - elongated polygon connecting from the road
+        // 3. Road arrival approach - elongated tongue connecting to road through 4.5m gate
         this.addPolygon(root, [
-            [-3, 6], [3, 6], [5, 12], [6, 18], [4, 25],
-            [-2, 26], [-4, 19], [-5, 12]
+            [-3.5, 4.0], [3.5, 4.0], [4.5, 12], [5.5, 18], [4, 25],
+            [-2, 26], [-4, 19], [-4.5, 12]
         ], 0x4a4842, 0.03);
     }
 
     buildGasStationGround(root) {
-        // 2. Parking area - broader gravel/dirt polygon around the forecourt
+        // 1. Broad gravel/dirt apron surrounding forecourt and store
         this.addPolygon(root, [
-            [-18, -12], [-10, -15], [0, -14], [12, -16], [19, -10],
-            [22, -2], [18, 8], [10, 14], [0, 16], [-12, 13], [-19, 5]
+            [-14, -14], [0, -15], [14, -14], [16, -6], [16, 8],
+            [12, 16], [0, 18], [-12, 16], [-16, 8], [-16, -6]
         ], 0x5a5448, 0.00);
 
-        // 1. Forecourt - large cracked concrete/asphalt polygon where pumps sit
+        // 2. Forecourt - cracked concrete/asphalt polygon where pumps and canopy sit
         this.addPolygon(root, [
-            [-14, -8], [-5, -10], [5, -11], [14, -8],
-            [16, 0], [13, 7], [4, 10], [-6, 9], [-15, 3]
+            [-12, -6], [12, -6], [12, 8], [8, 14],
+            [-4, 14], [-12, 8]
         ], 0x3e4042, 0.01);
 
-        // 3. Building pad - concrete slab under the store building
+        // 3. Store Building Pad - concrete pad under convenience store (Y: -12 .. -5)
         this.addPolygon(root, [
-            [-8, -6], [2, -6], [3, -5], [3, 2],
-            [2, 3], [-8, 3], [-9, 2], [-9, -5]
+            [-7.0, -13.0], [7.0, -13.0], [7.0, -4.5], [-7.0, -4.5]
         ], 0x6b695e, 0.02);
 
-        // 4. Road connection - asphalt tongue connecting to the dirt path approach
+        // 4. Road connection - asphalt tongue leading from roadside turnoff into forecourt
         this.addPolygon(root, [
-            [8, 7], [13, 7], [16, 12], [18, 18], [21, 25],
-            [16, 26], [12, 19], [9, 13]
+            [-9.0, 8.0], [-3.0, 8.0], [-4.0, 18.0], [-10.0, 18.0]
         ], 0x34383c, 0.02);
 
-        // 5. Grass intrusion patches - small green polygons breaking through cracks
+        // 5. Grass intrusion patches breaking through cracked asphalt
         this.addPolygon(root, [
-            [-12, -4], [-9, -5], [-8, -2], [-11, -1]
+            [-10, 2], [-7, 1], [-6, 4], [-9, 5]
         ], 0x4a6e28, 0.03);
 
         this.addPolygon(root, [
-            [5, 4], [8, 3], [10, 5], [7, 7]
-        ], 0x4a6e28, 0.03);
-        
-        this.addPolygon(root, [
-            [-3, -8], [-1, -9], [1, -7], [-2, -6]
+            [6, 3], [9, 2], [10, 5], [7, 6]
         ], 0x4a6e28, 0.03);
     }
 
@@ -95,7 +89,6 @@ export class LocationGroundZones {
         mesh.position.y = heightOffset;
         mesh.receiveShadow = true;
         
-        // Tag it for WalkableSurfaceSystem
         mesh.userData.isWalkable = true;
         mesh.userData.surfaceType = 'ground';
         

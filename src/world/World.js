@@ -50,6 +50,9 @@ export class World {
     // Survivor Camp authored dressing (Clearing 4)
     this.survivorCamp = new SurvivorCampDressing(this.locationRegistry.roots.survivorCamp);
 
+    // Load callback
+    this.onLocationLoaded = null;
+
     // Load handcrafted GLB structures
     this.loadGasStation();
     this.loadRelayHub();
@@ -237,6 +240,7 @@ export class World {
 
       this.locationRegistry.roots.relay.add(model);
       console.log('Starting Survivor Hub "THE RELAY" loaded successfully');
+      if (this.onLocationLoaded) this.onLocationLoaded('relay');
     }, undefined, (error) => {
       console.error('Error loading relay hub GLB:', error);
     });
@@ -277,6 +281,7 @@ export class World {
 
       this.locationRegistry.roots.gasStation.add(model);
       console.log('Landmark Abandoned Gas Station loaded successfully');
+      if (this.onLocationLoaded) this.onLocationLoaded('gasStation');
     }, undefined, (error) => {
       console.error('Error loading gas station GLB:', error);
     });

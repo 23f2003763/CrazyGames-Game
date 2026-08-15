@@ -10,12 +10,12 @@ export class IsometricCamera {
     this.yaw = THREE.MathUtils.degToRad(45);
     
     // Zoom limits
-    this.gameplayMinDist = 27;
-    this.gameplayMaxDist = 37;
-    this.inspectionMinDist = 24;
+    this.gameplayMinDist = 19;
+    this.gameplayMaxDist = 30;
+    this.inspectionMinDist = 18;
     this.inspectionMaxDist = 88;
     
-    this.distance = 31.5; // Commercial gameplay default distance
+    this.distance = 23.5; // Calibrated for ~90-100px character height at 1080p
 
     // Modes: 'gameplay' | 'inspection'
     this.mode = 'gameplay';
@@ -29,9 +29,9 @@ export class IsometricCamera {
     this.pivot = new THREE.Object3D();
     this.pivot.rotation.y = this.yaw;
 
-    // Perspective Camera setup
+    // Perspective Camera setup with FOV 38
     const aspect = window.innerWidth / window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(40, aspect, 0.5, 1200);
+    this.camera = new THREE.PerspectiveCamera(38, aspect, 0.5, 1200);
     this.updateCameraTransform();
 
     // Interaction state

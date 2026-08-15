@@ -30,17 +30,15 @@ export class LocationRegistry {
   }
   
   initializeTransforms() {
-    // Defines the single absolute source of truth for each location's transform.
-    
-    // 1. Relay Hub (Clearing 1) - Natural 1:1 gameplay scale
+    // 1. Relay Hub (Clearing 1) - Natural 1:1 metric gameplay scale
     this.roots.relay.position.set(-95.0, getTerrainHeight(-95, 70) + 0.02, 70.0);
     this.roots.relay.rotation.y = Math.PI * 0.42;
     this.roots.relay.scale.set(1.0, 1.0, 1.0);
     
-    // 2. Gas Station (Clearing 2)
+    // 2. Gas Station / Octane Mart (Clearing 2) - Natural 1:1 metric gameplay scale
     this.roots.gasStation.position.set(-66.0, getTerrainHeight(-66, -34) + 0.02, -34.0);
     this.roots.gasStation.rotation.y = Math.PI * 0.82;
-    this.roots.gasStation.scale.set(1.15, 1.15, 1.15);
+    this.roots.gasStation.scale.set(1.0, 1.0, 1.0);
     
     // 3. Broken Span Bridge (Clearing 3)
     this.roots.brokenSpan.position.set(-5.0, getTerrainHeight(-5, 22) + 0.02, 22.0);
@@ -78,40 +76,6 @@ export class LocationRegistry {
   }
 
   buildColliders() {
-    // ----------------------------------------------------
-    // Clearing 1: The Relay (Starting Survivor Hub)
-    // ----------------------------------------------------
-    // Main Cabin
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayCabin', -3.8, 0, 3.6, 8.6, 6.4, 0);
-    // Radio Mast base
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayMast', 4.5, 0, 4.5, 2.0, 2.0, 0);
-    // Lookout Watchtower
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayLookout', 4.2, 0, -7.0, 2.4, 2.4, 0);
-    // Water Cistern Tower
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayCistern', -7.8, 0, -2.0, 2.0, 2.0, 0);
-    // Generator
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayGen', -7.5, 0, 5.0, 2.2, 1.6, 0);
-    
-    // Palisade Walls (leaving gate entrance at x: -2.0 to +2.0 open)
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayWallW', -9.5, 0, 1.5, 0.6, 11.0, 0);
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayWallN', -0.8, 0, 8.0, 16.0, 0.6, 0);
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayWallE', 7.5, 0, 2.5, 0.6, 11.0, 0);
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayWallFL', -5.8, 0, -7.5, 5.5, 0.6, 0);
-    this.addColliderBox(this.roots.relay, 'COL_BOX_RelayWallFR', 5.6, 0, -7.5, 4.5, 0.6, 0);
-    
-    // Named Spawn Marker (open courtyard near gate)
-    const spawnMarker = new THREE.Object3D();
-    spawnMarker.name = 'SPAWN_PLAYER';
-    spawnMarker.position.set(0.0, 0.0, -4.5);
-    this.roots.relay.add(spawnMarker);
-
-    // ----------------------------------------------------
-    // Clearing 2: Abandoned Gas Station
-    // ----------------------------------------------------
-    this.addColliderBox(this.roots.gasStation, 'COL_BOX_GasStore', -3.0, 0, -2.0, 11.0, 8.0, 0);
-    this.addColliderBox(this.roots.gasStation, 'COL_BOX_GasPumps', 2.0, 0, 6.0, 8.0, 2.2, 0);
-    this.addColliderBox(this.roots.gasStation, 'COL_BOX_GasTanker', 12.0, 0, -3.0, 3.5, 7.5, 0.2);
-
     // ----------------------------------------------------
     // Clearing 3: The Broken Span
     // ----------------------------------------------------

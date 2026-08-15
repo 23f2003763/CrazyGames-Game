@@ -4,340 +4,334 @@ import math
 import os
 from mathutils import Vector, Euler
 
-# Clear existing objects in scene
+# Clear existing scene
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
-# Helper function to create materials with Principled BSDF
-def create_material(name, color, roughness=0.7, metallic=0.0, alpha=1.0, emission=None, emission_strength=1.0):
+scene = bpy.context.scene
+scene.name = "TheRelay_Scene"
+
+# =============================================================================
+# MATERIALS PALETTE (Stylized PBR / FlatShading)
+# =============================================================================
+def make_mat(name, hex_color, roughness=0.85, metalness=0.0):
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes.clear()
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
     
-    node_p = nodes.new(type='ShaderNodeBsdfPrincipled')
-    if 'Base Color' in node_p.inputs:
-        node_p.inputs['Base Color'].default_value = color
-    node_p.inputs['Roughness'].default_value = roughness
-    node_p.inputs['Metallic'].default_value = metallic
-    if alpha < 1.0:
-        if 'Alpha' in node_p.inputs:
-            node_p.inputs['Alpha'].default_value = alpha
-        mat.blend_method = 'BLEND'
+    # sRGB hex to linear conversion
+    r = ((hex_color >> 16) & 0xff) / 255.0
+    g = ((hex_color >> 8) & 0xff) / 255.0
+    b = (hex_color & 0xff) / 255.0
     
-    if emission:
-        if 'Emission Color' in node_p.inputs:
-            node_p.inputs['Emission Color'].default_value = emission
-            node_p.inputs['Emission Strength'].default_value = emission_strength
-        elif 'Emission' in node_p.inputs:
-            node_p.inputs['Emission'].default_value = emission
-            
-    node_out = nodes.new(type='ShaderNodeOutputMaterial')
-    mat.node_tree.links.new(node_p.outputs['BSDF'], node_out.inputs['Surface'])
+    # Approximate gamma to linear
+    bsdf.inputs['Base Color'].default_value = (r**2.2, g**2.2, b**2.2, 1.0)
+    bsdf.inputs['Roughness'].default_value = roughness
+    bsdf.inputs['Metallic'].default_value = metalness
     return mat
 
-# =========================================================================
-# VIBRANT CARTOON HOME BASE COLOR PALETTE
-# =========================================================================
-m_wood_dark = create_material("Mat_WoodDark", (0.34, 0.20, 0.10, 1.0), roughness=0.9)       # Heavy logs
-m_wood_plank = create_material("Mat_WoodPlank", (0.56, 0.36, 0.18, 1.0), roughness=0.85)    # Siding planks
-m_wood_deck = create_material("Mat_WoodDeck", (0.62, 0.42, 0.22, 1.0), roughness=0.8)       # Porch flooring
-m_stone_base = create_material("Mat_StoneBase", (0.44, 0.45, 0.43, 1.0), roughness=0.9)     # Foundation stone
-m_roof_green = create_material("Mat_RoofGreen", (0.16, 0.38, 0.24, 1.0), roughness=0.6, metallic=0.2) # Ranger green
-m_metal_rust = create_material("Mat_MetalRust", (0.58, 0.24, 0.12, 1.0), roughness=0.85, metallic=0.25)
-m_metal_dark = create_material("Mat_MetalDark", (0.18, 0.20, 0.22, 1.0), roughness=0.6, metallic=0.5)
-m_metal_corrugated = create_material("Mat_MetalCorrugated", (0.42, 0.46, 0.48, 1.0), roughness=0.7, metallic=0.3)
-m_canvas_sand = create_material("Mat_CanvasSand", (0.82, 0.76, 0.58, 1.0), roughness=0.92)
-m_canvas_orange = create_material("Mat_CanvasOrange", (0.92, 0.46, 0.12, 1.0), roughness=0.9)
-m_canvas_blue = create_material("Mat_CanvasBlue", (0.18, 0.44, 0.68, 1.0), roughness=0.9)  # Draped tarp
-m_fire_glow = create_material("Mat_FireGlow", (0.98, 0.52, 0.06, 1.0), roughness=0.3, emission=(0.98, 0.52, 0.06, 1.0), emission_strength=2.8)
-m_lamp_warm = create_material("Mat_LampWarm", (0.98, 0.82, 0.24, 1.0), roughness=0.3, emission=(0.98, 0.82, 0.24, 1.0), emission_strength=2.5)
-m_beacon_red = create_material("Mat_BeaconRed", (0.98, 0.12, 0.08, 1.0), roughness=0.3, emission=(0.98, 0.12, 0.08, 1.0), emission_strength=3.0)
-m_sign_yellow = create_material("Mat_SignYellow", (0.98, 0.86, 0.10, 1.0), roughness=0.3, emission=(0.98, 0.86, 0.10, 1.0), emission_strength=1.5)
-m_sign_red = create_material("Mat_SignRed", (0.88, 0.18, 0.14, 1.0), roughness=0.45)
-m_sign_green = create_material("Mat_SignGreen", (0.12, 0.50, 0.26, 1.0), roughness=0.5)
-m_crate_military = create_material("Mat_CrateMil", (0.30, 0.42, 0.24, 1.0), roughness=0.8)
-m_barrel_fuel = create_material("Mat_BarrelFuel", (0.88, 0.22, 0.12, 1.0), roughness=0.5, metallic=0.3)
-m_barrel_water = create_material("Mat_BarrelWater", (0.18, 0.46, 0.68, 1.0), roughness=0.5, metallic=0.3)
-m_glass_dark = create_material("Mat_GlassDark", (0.12, 0.14, 0.16, 1.0), roughness=0.2, alpha=0.85)
+MAT_CABIN_WALL = make_mat("Mat_CabinWall", 0x5a4432, 0.9)       # Weathered dark timber
+MAT_WOOD_TRIM  = make_mat("Mat_WoodTrim", 0x3e2c1e, 0.85)       # Dark walnut trim
+MAT_ROOF       = make_mat("Mat_Roof", 0x4a4f54, 0.75, 0.15)      # Corrugated zinc roof
+MAT_CONCRETE   = make_mat("Mat_Concrete", 0x767876, 0.95)       # Foundation slab
+MAT_DOOR       = make_mat("Mat_Door", 0x7a3a22, 0.8)            # Red-brown cabin door
+MAT_GLASS      = make_mat("Mat_Glass", 0x22363b, 0.2, 0.8)       # Dark reflective window
+MAT_STEEL      = make_mat("Mat_Steel", 0x363a3e, 0.6, 0.7)       # Radio tower galvanized steel
+MAT_RUST_METAL = make_mat("Mat_RustMetal", 0x723e26, 0.85, 0.3)  # Weathered sheet metal
+MAT_FENCE_WOOD = make_mat("Mat_FenceWood", 0x685542, 0.9)       # Palisade logs
+MAT_YELLOW_ACC = make_mat("Mat_YellowAcc", 0xdba228, 0.6)       # Generator / warning accent
+MAT_RED_ACC    = make_mat("Mat_RedAcc", 0xb23424, 0.6)          # Jerry cans / beacon lamp
+MAT_STONE_FIRE = make_mat("Mat_StoneFire", 0x4e5052, 0.95)      # Fire ring stones
 
-def create_box(name, size, loc, rot=(0,0,0), mat=None):
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc, rotation=rot)
+# Root Collection
+col = bpy.context.collection
+
+# =============================================================================
+# HELPER PRIMITIVE BUILDERS
+# =============================================================================
+def add_box(name, size, pos, mat, rot=(0,0,0), parent=None):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0,0,0))
     obj = bpy.context.active_object
     obj.name = name
-    obj.scale = size
+    obj.scale = Vector(size)
+    obj.rotation_euler = Euler(rot)
+    obj.location = Vector(pos)
+    obj.data.materials.append(mat)
+    if parent:
+        obj.parent = parent
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    if mat:
-        obj.data.materials.append(mat)
     return obj
 
-def create_cylinder(name, radius, depth, loc, rot=(0,0,0), vertices=8, mat=None):
-    bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=depth, vertices=vertices, location=loc, rotation=rot)
+def add_cylinder(name, radius, depth, pos, mat, rot=(0,0,0), vertices=12, parent=None):
+    bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=depth, vertices=vertices, location=(0,0,0))
     obj = bpy.context.active_object
     obj.name = name
-    if mat:
-        obj.data.materials.append(mat)
+    obj.rotation_euler = Euler(rot)
+    obj.location = Vector(pos)
+    obj.data.materials.append(mat)
+    if parent:
+        obj.parent = parent
     return obj
 
-def create_socket(name, loc, rot=(0,0,0)):
-    empty = bpy.data.objects.new(name, None)
-    empty.empty_display_type = 'PLAIN_AXES'
-    empty.empty_display_size = 0.6
-    empty.location = loc
-    empty.rotation_euler = rot
-    bpy.context.scene.collection.objects.link(empty)
-    return empty
+# Root Object for the entire location
+relay_group = bpy.data.objects.new("TheRelay_Root", None)
+col.objects.link(relay_group)
 
-# Helper to generate 3D Block Lettering
-def create_3d_letter(char, pos, size, thickness, mat):
-    objs = []
-    x, y, z = pos
-    w, h = size
-    t = thickness
-    hw, hh = w / 2, h / 2
-    
-    if char == 'T':
-        b1 = create_box(f"Let_T_H", (w, t, h*0.28), (x, y, z + hh - h*0.14), mat=mat)
-        b2 = create_box(f"Let_T_V", (w*0.32, t, h*0.78), (x, y, z - h*0.11), mat=mat)
-        objs.extend([b1, b2])
-    elif char == 'H':
-        b1 = create_box(f"Let_H_L", (w*0.3, t, h), (x - hw + w*0.15, y, z), mat=mat)
-        b2 = create_box(f"Let_H_R", (w*0.3, t, h), (x + hw - w*0.15, y, z), mat=mat)
-        b3 = create_box(f"Let_H_M", (w*0.6, t, h*0.26), (x, y, z), mat=mat)
-        objs.extend([b1, b2, b3])
-    elif char == 'E':
-        b1 = create_box(f"Let_E_L", (w*0.28, t, h), (x - hw + w*0.14, y, z), mat=mat)
-        b2 = create_box(f"Let_E_T", (w*0.75, t, h*0.25), (x + w*0.1, y, z + hh - h*0.125), mat=mat)
-        b3 = create_box(f"Let_E_M", (w*0.6, t, h*0.22), (x + w*0.05, y, z), mat=mat)
-        b4 = create_box(f"Let_E_B", (w*0.75, t, h*0.25), (x + w*0.1, y, z - hh + h*0.125), mat=mat)
-        objs.extend([b1, b2, b3, b4])
-    elif char == 'R':
-        b1 = create_box(f"Let_R_L", (w*0.28, t, h), (x - hw + w*0.14, y, z), mat=mat)
-        b2 = create_box(f"Let_R_T", (w*0.6, t, h*0.25), (x, y, z + hh - h*0.125), mat=mat)
-        b3 = create_box(f"Let_R_M", (w*0.6, t, h*0.22), (x, y, z + h*0.05), mat=mat)
-        b4 = create_box(f"Let_R_Loop", (w*0.28, t, h*0.45), (x + hw - w*0.14, y, z + hh*0.5), mat=mat)
-        b5 = create_box(f"Let_R_Leg", (w*0.3, t, h*0.55), (x + w*0.12, y, z - h*0.24), rot=(0, -0.4, 0), mat=mat)
-        objs.extend([b1, b2, b3, b4, b5])
-    elif char == 'L':
-        b1 = create_box(f"Let_L_V", (w*0.28, t, h), (x - hw + w*0.14, y, z), mat=mat)
-        b2 = create_box(f"Let_L_H", (w*0.75, t, h*0.25), (x + w*0.1, y, z - hh + h*0.125), mat=mat)
-        objs.extend([b1, b2])
-    elif char == 'A':
-        b1 = create_box(f"Let_A_L", (w*0.28, t, h), (x - hw + w*0.14, y, z), mat=mat)
-        b2 = create_box(f"Let_A_R", (w*0.28, t, h), (x + hw - w*0.14, y, z), mat=mat)
-        b3 = create_box(f"Let_A_T", (w*0.6, t, h*0.26), (x, y, z + hh - h*0.13), mat=mat)
-        b4 = create_box(f"Let_A_M", (w*0.6, t, h*0.24), (x, y, z), mat=mat)
-        objs.extend([b1, b2, b3, b4])
-    elif char == 'Y':
-        b1 = create_box(f"Let_Y_V", (w*0.3, t, h*0.55), (x, y, z - h*0.24), mat=mat)
-        b2 = create_box(f"Let_Y_L", (w*0.28, t, h*0.55), (x - w*0.2, y, z + h*0.2), rot=(0, 0.45, 0), mat=mat)
-        b3 = create_box(f"Let_Y_R", (w*0.28, t, h*0.55), (x + w*0.2, y, z + h*0.2), rot=(0, -0.45, 0), mat=mat)
-        objs.extend([b1, b2, b3])
-        
-    return objs
+# =============================================================================
+# 1. MAIN RANGER STATION / SURVIVOR CABIN (True Scale: 7.2m x 5.6m, Wall H: 2.8m)
+# =============================================================================
+cabin_grp = bpy.data.objects.new("Cabin_Building", None)
+cabin_grp.location = Vector((-3.5, -4.5, 0)) # Offset from center
+cabin_grp.parent = relay_group
+col.objects.link(cabin_grp)
 
-print("Building properly proportioned 'THE RELAY' Starting Survivor Hub...")
+# Concrete foundation plinth (0.25m high)
+add_box("Cabin_Foundation", (7.4, 6.0, 0.25), (0, 0, 0.125), MAT_CONCRETE, parent=cabin_grp)
 
-all_objects = []
+# Main timber walls (Width 6.8m, Depth 5.4m, Height 2.8m)
+add_box("Cabin_MainWalls", (6.8, 5.4, 2.8), (0, 0, 1.65), MAT_CABIN_WALL, parent=cabin_grp)
 
-# =========================================================================
-# 1. RANGER STATION CABIN (Proper human-scale: 8.2m wide, 6.0m deep, 3.4m height)
-# =========================================================================
-cabin_stone = create_box("Ranger_StoneBase", (8.6, 6.4, 0.6), (-3.8, 3.6, 0.3), mat=m_stone_base)
-cabin_walls = create_box("Ranger_TimberWalls", (8.2, 6.0, 2.6), (-3.8, 3.6, 1.9), mat=m_wood_plank)
+# Front Porch Deck (Width 7.0m, Depth 1.8m, Height 0.25m)
+add_box("Cabin_PorchDeck", (7.0, 1.8, 0.25), (0, 3.4, 0.125), MAT_WOOD_TRIM, parent=cabin_grp)
 
-for cx, cy in [(-7.8, 0.7), (0.2, 0.7), (-7.8, 6.5), (0.2, 6.5)]:
-    corner_log = create_cylinder(f"Ranger_LogCorner_{cx}_{cy}", 0.25, 3.4, (cx, cy, 1.7), vertices=6, mat=m_wood_dark)
-    all_objects.append(corner_log)
+# Porch Timber Steps (Width 2.2m, Depth 0.8m, Height 0.12m)
+add_box("Cabin_PorchSteps", (2.2, 0.8, 0.12), (0, 4.4, 0.06), MAT_WOOD_TRIM, parent=cabin_grp)
 
-roof_eaves = create_box("Ranger_RoofDeck", (9.2, 6.8, 0.25), (-3.8, 3.6, 3.3), mat=m_roof_green)
-roof_ridge = create_box("Ranger_RoofRidge", (9.4, 0.8, 0.8), (-3.8, 3.6, 3.8), rot=(0.4, 0, 0), mat=m_roof_green)
-roof_patch = create_box("Ranger_RoofRustPatch", (2.4, 3.0, 0.06), (-2.6, 4.2, 3.5), rot=(0.1, 0, 0.2), mat=m_metal_rust)
-all_objects.extend([cabin_stone, cabin_walls, roof_eaves, roof_ridge, roof_patch])
+# Porch Support Posts (4 pillars, Height 2.7m)
+for px in [-3.1, -1.0, 1.0, 3.1]:
+    add_box(f"Cabin_PorchPost_{px}", (0.18, 0.18, 2.7), (px, 4.1, 1.45), MAT_WOOD_TRIM, parent=cabin_grp)
 
-# Porch
-porch_deck = create_box("Ranger_PorchDeck", (5.2, 1.8, 0.25), (-3.4, 0.0, 0.45), mat=m_wood_deck)
-porch_steps = create_box("Ranger_PorchSteps", (2.8, 1.0, 0.2), (-3.4, -1.2, 0.2), mat=m_wood_deck)
-porch_rail = create_box("Ranger_PorchRail", (5.2, 0.12, 0.8), (-3.4, -0.85, 0.95), mat=m_wood_dark)
-for px in [-5.8, -1.0]:
-    p_post = create_cylinder(f"Ranger_PorchPost_{px}", 0.14, 2.2, (px, -0.8, 1.4), vertices=6, mat=m_wood_dark)
-    all_objects.append(p_post)
-all_objects.extend([porch_deck, porch_steps, porch_rail])
+# Porch Roof Beam (Width 7.2m, Height 0.22m)
+add_box("Cabin_PorchBeam", (7.2, 0.25, 0.22), (0, 4.1, 2.8), MAT_WOOD_TRIM, parent=cabin_grp)
 
-# Front Entrance Door (Door height 2.5m - 1.2x Ryder)
-door_frame = create_box("Ranger_DoorFrame", (1.4, 0.15, 2.5), (-3.4, 0.62, 1.85), mat=m_wood_dark)
-door_mesh = create_box("Ranger_DoorLeaf", (1.1, 0.08, 2.3), (-3.4, 0.65, 1.75), mat=m_wood_plank)
-lantern_mount = create_box("Ranger_LanternMount", (0.08, 0.25, 0.08), (-2.5, 0.55, 2.4), mat=m_metal_dark)
-lantern_light = create_cylinder("Ranger_PorchLantern", 0.15, 0.3, (-2.5, 0.4, 2.3), vertices=6, mat=m_lamp_warm)
-all_objects.extend([door_frame, door_mesh, lantern_mount, lantern_light])
+# Pitched Roof Main (Gable roof: Width 7.4m, Depth 6.2m, Height 1.4m)
+# Create parametric prism for roof
+bm = bmesh.new()
+# 6 vertices for triangular prism
+v0 = bm.verts.new((-3.8, -3.2, 2.9))
+v1 = bm.verts.new(( 3.8, -3.2, 2.9))
+v2 = bm.verts.new(( 0.0, -3.2, 4.3))
+v3 = bm.verts.new((-3.8,  4.4, 2.9)) # Overhanging porch
+v4 = bm.verts.new(( 3.8,  4.4, 2.9))
+v5 = bm.verts.new(( 0.0,  4.4, 4.3))
 
-# Windows
-for wx in [-5.8, -1.2]:
-    win_f = create_box(f"Ranger_WinFrame_{wx}", (1.4, 0.15, 1.4), (wx, 0.62, 2.0), mat=m_wood_dark)
-    win_g = create_box(f"Ranger_WinGlass_{wx}", (1.2, 0.06, 1.2), (wx, 0.65, 2.0), mat=m_glass_dark)
-    all_objects.extend([win_f, win_g])
+bm.faces.new((v0, v1, v2))       # Back triangle
+bm.faces.new((v3, v5, v4))       # Front triangle
+bm.faces.new((v0, v2, v5, v3))   # Left slope
+bm.faces.new((v1, v4, v5, v2))   # Right slope
+bm.faces.new((v0, v3, v4, v1))   # Bottom base
 
-# =========================================================================
-# 2. RADIO MAST (Distinct landmark silhouette, 10m height)
-# =========================================================================
-mast_base = create_box("RadioMast_ConcreteBase", (1.8, 1.8, 0.5), (4.5, 4.5, 0.25), mat=m_stone_base)
-all_objects.append(mast_base)
+mesh_roof = bpy.data.meshes.new("Cabin_RoofMesh")
+bm.to_mesh(mesh_roof)
+bm.free()
+roof_obj = bpy.data.objects.new("Cabin_PitchedRoof", mesh_roof)
+roof_obj.data.materials.append(MAT_ROOF)
+roof_obj.parent = cabin_grp
+col.objects.link(roof_obj)
 
-mast_height = 9.0
-mast_leg_coords = [(-0.6, -0.6), (0.6, -0.6), (-0.6, 0.6), (0.6, 0.6)]
-for lx, ly in mast_leg_coords:
-    m_leg = create_cylinder(f"RadioMast_Leg_{lx}_{ly}", 0.06, mast_height, (4.5 + lx * 0.6, 4.5 + ly * 0.6, 5.0), vertices=4, mat=m_metal_dark)
-    all_objects.append(m_leg)
+# Cabin Front Entrance Door (Width 1.1m, Height 2.3m, Depth 0.12m)
+add_box("Cabin_FrontDoor", (1.1, 0.12, 2.3), (0, 2.71, 1.3), MAT_DOOR, parent=cabin_grp)
+add_box("Cabin_DoorFrame", (1.26, 0.16, 2.42), (0, 2.71, 1.36), MAT_WOOD_TRIM, parent=cabin_grp)
 
-for tz in [2.0, 4.0, 6.0, 8.0]:
-    b_x = create_box(f"Mast_Brace_{tz}", (1.3, 1.3, 0.06), (4.5, 4.5, tz), mat=m_metal_rust)
-    all_objects.append(b_x)
+# Front Windows (2 large framed windows on either side of door)
+for wx in [-2.0, 2.0]:
+    add_box(f"Cabin_WindowGlass_{wx}", (1.4, 0.08, 1.3), (wx, 2.71, 1.6), MAT_GLASS, parent=cabin_grp)
+    add_box(f"Cabin_WindowFrame_{wx}", (1.52, 0.14, 1.42), (wx, 2.71, 1.6), MAT_WOOD_TRIM, parent=cabin_grp)
+    # Window shutters
+    add_box(f"Cabin_ShutterL_{wx}", (0.35, 0.10, 1.35), (wx - 0.9, 2.73, 1.6), MAT_WOOD_TRIM, parent=cabin_grp)
+    add_box(f"Cabin_ShutterR_{wx}", (0.35, 0.10, 1.35), (wx + 0.9, 2.73, 1.6), MAT_WOOD_TRIM, parent=cabin_grp)
 
-top_mast = create_cylinder("RadioMast_TopPole", 0.05, 3.0, (4.7, 4.7, 10.5), rot=(0.1, 0.08, 0.15), vertices=4, mat=m_metal_dark)
-comm_dish = create_cylinder("RadioMast_CommDish", 0.7, 0.15, (4.6, 4.1, 9.2), rot=(1.2, 0.4, -0.5), vertices=8, mat=m_roof_green)
-beacon_lamp = create_cylinder("RadioMast_BeaconRed", 0.15, 0.25, (4.9, 4.9, 12.0), vertices=8, mat=m_beacon_red)
-all_objects.extend([top_mast, comm_dish, beacon_lamp])
+# Stove Chimney Pipe on Roof
+add_cylinder("Cabin_Chimney", 0.16, 1.6, (-2.2, -1.2, 4.3), MAT_RUST_METAL, parent=cabin_grp)
 
-# =========================================================================
-# 3. HERO ENTRANCE GATE & PROPORTIONATE "THE RELAY" SIGNBOARD
-# Gate opening: 4.4m wide (fits 3-4 players side-by-side)
-# =========================================================================
-gate_post_L = create_cylinder("Gate_Post_Left", 0.3, 4.0, (-2.4, -7.5, 2.0), vertices=6, mat=m_wood_dark)
-gate_post_R = create_cylinder("Gate_Post_Right", 0.3, 4.0, (2.4, -7.5, 2.0), vertices=6, mat=m_wood_dark)
-gate_arch = create_box("Gate_ArchBeam", (5.4, 0.35, 0.35), (0.0, -7.5, 3.7), rot=(0, 0, 0), mat=m_wood_dark)
-all_objects.extend([gate_post_L, gate_post_R, gate_arch])
+# Modest "THE RELAY" carved sign on porch beam (Width 2.2m, Height 0.45m - does not block camera!)
+add_box("Cabin_Signboard", (2.2, 0.08, 0.45), (0, 4.22, 2.85), MAT_WOOD_TRIM, parent=cabin_grp)
+add_box("Cabin_SignAccent", (2.0, 0.10, 0.06), (0, 4.22, 2.7), MAT_YELLOW_ACC, parent=cabin_grp)
 
-# Signboard: Tasteful, elevated, does NOT obstruct camera view of the player
-sign_board_main = create_box("Hero_Sign_Board", (4.8, 0.2, 0.9), (0.0, -7.65, 4.3), mat=m_wood_dark)
-sign_board_trim = create_box("Hero_Sign_Trim", (4.9, 0.15, 0.95), (0.0, -7.62, 4.3), mat=m_canvas_orange)
-all_objects.extend([sign_board_main, sign_board_trim])
+# =============================================================================
+# 2. RADIO COMMUNICATIONS TOWER (Galvanized Lattice Mast, Height: 11.5m)
+# =============================================================================
+tower_grp = bpy.data.objects.new("RadioTower_Station", None)
+tower_grp.location = Vector((-8.5, -6.5, 0))
+tower_grp.parent = relay_group
+col.objects.link(tower_grp)
 
-# 3D Lettering scaled neatly
-letters_the = [('T', -1.7), ('H', -1.2), ('E', -0.7)]
-for ch, lx in letters_the:
-    l_objs = create_3d_letter(ch, (lx, -7.78, 4.3), (0.35, 0.5), 0.08, m_sign_yellow)
-    all_objects.extend(l_objs)
+# Concrete base footing
+add_box("Tower_Footing", (2.2, 2.2, 0.4), (0, 0, 0.2), MAT_CONCRETE, parent=tower_grp)
 
-letters_relay = [('R', 0.1), ('E', 0.55), ('L', 1.0), ('A', 1.45), ('Y', 1.9)]
-for ch, lx in letters_relay:
-    l_objs = create_3d_letter(ch, (lx, -7.78, 4.3), (0.35, 0.5), 0.08, m_sign_yellow)
-    all_objects.extend(l_objs)
+# 4 Corner steel upright legs (tapered inward slightly)
+for lx in [-0.85, 0.85]:
+    for lz in [-0.85, 0.85]:
+        add_cylinder(f"Tower_Leg_{lx}_{lz}", 0.06, 11.2, (lx*0.8, lz*0.8, 5.8), MAT_STEEL, vertices=6, parent=tower_grp)
 
-gate_lamp_L = create_cylinder("Gate_Lantern_L", 0.16, 0.3, (-2.1, -7.7, 3.4), vertices=6, mat=m_lamp_warm)
-gate_lamp_R = create_cylinder("Gate_Lantern_R", 0.16, 0.3, (2.1, -7.7, 3.4), vertices=6, mat=m_lamp_warm)
-all_objects.extend([gate_lamp_L, gate_lamp_R])
+# Horizontal and X-braces across 5 vertical tiers
+for tier in range(5):
+    tz = 1.2 + tier * 2.1
+    # Perimeter square ring
+    add_box(f"Tower_Ring_{tier}", (1.5 - tier*0.1, 1.5 - tier*0.1, 0.08), (0, 0, tz), MAT_STEEL, parent=tower_grp)
+    # Diagonal braces
+    add_box(f"Tower_Diag1_{tier}", (1.7 - tier*0.1, 0.06, 0.06), (0, 0, tz + 0.9), MAT_STEEL, rot=(0.4, 0, 0), parent=tower_grp)
+    add_box(f"Tower_Diag2_{tier}", (0.06, 1.7 - tier*0.1, 0.06), (0, 0, tz + 0.9), MAT_STEEL, rot=(0, 0.4, 0), parent=tower_grp)
 
-# =========================================================================
-# 4. LOOKOUT WATCHTOWER (Gate Corner: X = 4.2, Y = -7.0)
-# =========================================================================
-for lk_x, lk_y in [(3.2, -8.0), (5.2, -8.0), (3.2, -6.0), (5.2, -6.0)]:
-    lk_post = create_cylinder(f"Lookout_Post_{lk_x}_{lk_y}", 0.14, 3.8, (lk_x, lk_y, 1.9), vertices=6, mat=m_wood_dark)
-    all_objects.append(lk_post)
+# Top antenna mast & flashing beacon
+add_cylinder("Tower_AntennaMast", 0.04, 3.5, (0, 0, 12.2), MAT_STEEL, vertices=6, parent=tower_grp)
+add_cylinder("Tower_BeaconLamp", 0.12, 0.25, (0, 0, 13.8), MAT_RED_ACC, vertices=8, parent=tower_grp)
 
-lookout_floor = create_box("Lookout_Floor", (2.4, 2.4, 0.2), (4.2, -7.0, 3.0), mat=m_wood_deck)
-lookout_rail = create_box("Lookout_Railing", (2.3, 2.3, 0.7), (4.2, -7.0, 3.45), mat=m_wood_dark)
-lookout_canvas = create_box("Lookout_CanopyCanvas", (2.6, 2.6, 0.1), (4.2, -7.0, 4.6), rot=(-0.08, 0, 0.05), mat=m_canvas_orange)
-lookout_spotlight = create_cylinder("Lookout_Spotlight", 0.18, 0.3, (3.3, -7.8, 3.3), rot=(0.6, 0.4, 0), vertices=6, mat=m_lamp_warm)
-all_objects.extend([lookout_floor, lookout_rail, lookout_canvas, lookout_spotlight])
+# Dish antenna attached to mid-mast
+add_cylinder("Tower_Dish", 0.7, 0.15, (0.8, 0, 7.5), MAT_STEEL, rot=(0, math.pi/2, 0), vertices=10, parent=tower_grp)
 
-# =========================================================================
-# 5. PERIMETER PALISADE WALLS (Height 2.0m - chest/head level)
-# =========================================================================
-wall_segments = [
-    {"x": -9.5, "y": 1.5, "len": 5.5, "rot": 1.57, "mat": m_wood_dark},
-    {"x": -9.5, "y": -3.5, "len": 4.5, "rot": 1.57, "mat": m_wood_dark},
-    {"x": -9.2, "y": 5.5, "len": 3.5, "rot": 1.7, "mat": m_metal_rust},
-    {"x": -4.8, "y": 8.0, "len": 8.0, "rot": 0.0, "mat": m_wood_dark},
-    {"x": 3.2, "y": 8.0, "len": 7.5, "rot": 0.0, "mat": m_metal_corrugated},
-    {"x": 7.5, "y": 5.0, "len": 5.5, "rot": 1.57, "mat": m_wood_dark},
-    {"x": 7.5, "y": 0.0, "len": 5.5, "rot": 1.57, "mat": m_metal_corrugated},
-    {"x": -5.8, "y": -7.5, "len": 5.5, "rot": 0.0, "mat": m_wood_dark},
-    {"x": 5.6, "y": -7.5, "len": 4.5, "rot": 0.0, "mat": m_metal_corrugated},
-]
-for w_idx, ws in enumerate(wall_segments):
-    wall_mesh = create_box(f"Palisade_Wall_{w_idx}", (ws["len"], 0.3, 2.0), (ws["x"], ws["y"], 1.0), rot=(0, 0, ws["rot"]), mat=ws["mat"])
-    all_objects.append(wall_mesh)
+# =============================================================================
+# 3. FORTIFIED PERIMETER FENCE & WIDE VEHICLE/PLAYER GATE
+# =============================================================================
+fence_grp = bpy.data.objects.new("Compound_Perimeter", None)
+fence_grp.parent = relay_group
+col.objects.link(fence_grp)
 
-tarp_mesh = create_box("Hanging_Tarp_Blue", (2.4, 0.1, 1.6), (-9.6, 2.0, 1.3), rot=(0.05, 0, 1.57), mat=m_canvas_blue)
-all_objects.append(tarp_mesh)
+# North & West perimeter palisade wall segments (Height 2.0m, log diameter ~0.2m)
+# West flank wall: X = -10.5, Y = -9.0 .. 6.0
+for wy in range(-9, 7, 2):
+    add_box(f"Fence_West_{wy}", (0.22, 2.05, 2.1), (-10.5, wy, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
+    add_box(f"Fence_WestTrim_{wy}", (0.28, 2.0, 0.15), (-10.5, wy, 1.7), MAT_RUST_METAL, parent=fence_grp)
 
-# =========================================================================
-# 6. OPEN COURTYARD FEATURES (Campfire, Seating, Workbench, Generator)
-# =========================================================================
-# Campfire
-fire_stone_ring = create_cylinder("Campfire_StoneRing", 0.9, 0.22, (0.0, -1.5, 0.11), vertices=8, mat=m_stone_base)
-fire_pit_dark = create_cylinder("Campfire_AshBed", 0.7, 0.08, (0.0, -1.5, 0.16), vertices=8, mat=m_metal_dark)
-fire_embers = create_cylinder("Campfire_EmbersGlow", 0.55, 0.2, (0.0, -1.5, 0.25), vertices=7, mat=m_fire_glow)
-log1 = create_cylinder("Campfire_Log1", 0.1, 1.2, (0.0, -1.5, 0.28), rot=(0.3, 0.5, 0.7), vertices=5, mat=m_wood_dark)
-log2 = create_cylinder("Campfire_Log2", 0.1, 1.1, (0.0, -1.5, 0.28), rot=(-0.4, 0.6, -0.5), vertices=5, mat=m_wood_dark)
-spit_post_L = create_cylinder("Campfire_SpitL", 0.04, 1.0, (-0.6, -1.5, 0.5), vertices=4, mat=m_metal_dark)
-spit_post_R = create_cylinder("Campfire_SpitR", 0.04, 1.0, (0.6, -1.5, 0.5), vertices=4, mat=m_metal_dark)
-spit_bar = create_cylinder("Campfire_SpitBar", 0.03, 1.4, (0.0, -1.5, 0.95), rot=(0, 0, 1.57), vertices=4, mat=m_metal_dark)
-spit_pot = create_cylinder("Campfire_Pot", 0.18, 0.25, (0.0, -1.5, 0.65), vertices=6, mat=m_metal_dark)
-bench_N = create_box("Campfire_BenchN", (1.6, 0.4, 0.35), (0.0, -0.5, 0.18), mat=m_wood_dark)
-bench_W = create_box("Campfire_BenchW", (0.4, 1.4, 0.35), (-1.1, -1.6, 0.18), mat=m_wood_dark)
-bench_S = create_box("Campfire_BenchS", (1.4, 0.4, 0.35), (0.2, -2.5, 0.18), mat=m_wood_dark)
-all_objects.extend([fire_stone_ring, fire_pit_dark, fire_embers, log1, log2, spit_post_L, spit_post_R, spit_bar, spit_pot, bench_N, bench_W, bench_S])
+# North back wall: Y = -9.0, X = -10.5 .. 8.0
+for nx in range(-10, 9, 2):
+    add_box(f"Fence_North_{nx}", (2.05, 0.22, 2.1), (nx, -9.0, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
+    add_box(f"Fence_NorthTrim_{nx}", (2.0, 0.28, 0.15), (nx, -9.0, 1.7), MAT_RUST_METAL, parent=fence_grp)
 
-# Workbench Zone
-wb_canopy = create_box("Workbench_RoofLeanTo", (3.0, 2.4, 0.12), (5.5, 0.5, 2.5), rot=(0, -0.25, 0), mat=m_metal_corrugated)
-for wbp_y in [-0.5, 1.5]:
-    wbp = create_cylinder(f"Workbench_Post_{wbp_y}", 0.1, 2.4, (4.2, wbp_y, 1.2), vertices=5, mat=m_wood_dark)
-    all_objects.append(wbp)
-wb_table = create_box("Workbench_Table", (1.8, 0.8, 0.75), (5.6, 0.5, 0.38), mat=m_wood_deck)
-wb_vise = create_box("Workbench_Vise", (0.25, 0.25, 0.22), (4.9, 0.7, 0.85), mat=m_metal_dark)
-wb_toolbox = create_box("Workbench_Toolbox", (0.55, 0.3, 0.26), (5.9, 0.3, 0.88), mat=m_metal_rust)
-wb_lamp = create_cylinder("Workbench_HangingLamp", 0.14, 0.24, (5.5, 0.5, 2.0), vertices=6, mat=m_lamp_warm)
-all_objects.extend([wb_canopy, wb_table, wb_vise, wb_toolbox, wb_lamp])
+# East flank wall: X = 8.5, Y = -9.0 .. 6.0
+for ey in range(-9, 7, 2):
+    add_box(f"Fence_East_{ey}", (0.22, 2.05, 2.1), (8.5, ey, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
 
-# Diesel Generator
-gen_skid = create_box("Gen_WoodSkid", (2.0, 1.4, 0.2), (-7.5, 5.0, 0.1), mat=m_wood_dark)
-gen_housing = create_box("Gen_Housing", (1.7, 1.1, 1.0), (-7.5, 5.0, 0.7), mat=m_metal_rust)
-gen_exhaust = create_cylinder("Gen_ExhaustPipe", 0.08, 1.3, (-6.9, 5.2, 1.4), rot=(0.1, 0, 0.2), vertices=6, mat=m_metal_dark)
-gen_lamp = create_cylinder("Gen_WorkLight", 0.12, 0.2, (-6.5, 4.5, 1.2), vertices=6, mat=m_lamp_warm)
-all_objects.extend([gen_skid, gen_housing, gen_exhaust, gen_lamp])
+# South Front Wall with WIDE 4.5m GATE OPENING
+# Left gate flank wall: X = -10.5 .. -2.4, Y = 6.0
+add_box("Fence_SouthLeft_1", (4.0, 0.24, 2.1), (-6.5, 6.0, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
+add_box("Fence_SouthLeft_2", (4.0, 0.24, 2.1), (-2.5, 6.0, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
 
-# Water Cistern
-for st_x, st_y in [(-8.5, -2.8), (-7.0, -2.8), (-8.5, -1.3), (-7.0, -1.3)]:
-    stilt = create_cylinder(f"Water_Stilt_{st_x}_{st_y}", 0.14, 3.4, (st_x, st_y, 1.7), vertices=6, mat=m_wood_dark)
-    all_objects.append(stilt)
-water_tank_drum = create_cylinder("Water_TankCistern", 0.95, 1.8, (-7.75, -2.05, 4.0), vertices=10, mat=m_metal_corrugated)
-water_tank_roof = create_cylinder("Water_TankRoof", 1.05, 0.3, (-7.75, -2.05, 5.0), vertices=10, mat=m_roof_green)
-all_objects.extend([water_tank_drum, water_tank_roof])
+# Right gate flank wall: X = 2.4 .. 8.5, Y = 6.0
+add_box("Fence_SouthRight_1", (3.0, 0.24, 2.1), (4.0, 6.0, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
+add_box("Fence_SouthRight_2", (3.0, 0.24, 2.1), (7.0, 6.0, 1.05), MAT_FENCE_WOOD, parent=fence_grp)
 
-# Crates and Barrels
-c1 = create_box("Supply_Crate_1", (0.8, 0.8, 0.7), (2.8, 2.0, 0.35), rot=(0, 0, 0.2), mat=m_crate_military)
-c2 = create_box("Supply_Crate_2", (0.7, 0.7, 0.6), (2.8, 2.0, 1.0), rot=(0, 0, -0.15), mat=m_crate_military)
-b1 = create_cylinder("Fuel_Barrel_Red", 0.32, 0.95, (-6.3, 4.5, 0.48), vertices=8, mat=m_barrel_fuel)
-b2 = create_cylinder("Water_Barrel_Blue", 0.32, 0.95, (-6.8, -0.8, 0.48), vertices=8, mat=m_barrel_water)
-all_objects.extend([c1, c2, b1, b2])
+# Fortified Gate Posts (Heavy log columns on either side of 4.5m opening)
+add_cylinder("Gate_Post_Left", 0.24, 3.2, (-2.3, 6.0, 1.6), MAT_WOOD_TRIM, parent=fence_grp)
+add_cylinder("Gate_Post_Right", 0.24, 3.2, (2.3, 6.0, 1.6), MAT_WOOD_TRIM, parent=fence_grp)
 
-# =========================================================================
-# 7. NAMED GAMEPLAY SOCKETS
-# =========================================================================
-sockets = [
-    create_socket("SPAWN_PLAYER", (0.0, -4.5, 0.0), (0, 0, 0)),
-    create_socket("SOCKET_MAIN_DOOR", (-3.4, -0.6, 0.45), (0, 0, 0)),
-    create_socket("SOCKET_WORKBENCH", (4.8, 0.5, 0.0), (0, 0, 1.57)),
-    create_socket("SOCKET_GENERATOR", (-6.0, 5.0, 0.0), (0, 0, -1.57)),
-]
-all_objects.extend(sockets)
+# Gate Overhead Timber Lintel (Height 3.1m - vehicles and players easily pass underneath!)
+add_box("Gate_OverheadLintel", (5.2, 0.35, 0.3), (0, 6.0, 3.1), MAT_WOOD_TRIM, parent=fence_grp)
 
-# Select all objects and export
-bpy.ops.object.select_all(action='DESELECT')
-for obj in all_objects:
-    obj.select_set(True)
-bpy.context.view_layer.objects.active = all_objects[0]
+# Swing Gates Propped Open outward at 45°
+add_box("Gate_Wing_Left", (2.1, 0.12, 2.0), (-2.8, 6.8, 1.0), MAT_RUST_METAL, rot=(0, 0, 0.65), parent=fence_grp)
+add_box("Gate_Wing_Right", (2.1, 0.12, 2.0), (2.8, 6.8, 1.0), MAT_RUST_METAL, rot=(0, 0, -0.65), parent=fence_grp)
 
-output_dir = os.path.abspath(r"public/models")
-os.makedirs(output_dir, exist_ok=True)
-output_path = os.path.join(output_dir, "relay_hub.glb")
+# =============================================================================
+# 4. SURVIVOR LIVING AREA (Campfire, Benches, Water Cistern)
+# =============================================================================
+camp_grp = bpy.data.objects.new("Survivor_CampfireZone", None)
+camp_grp.location = Vector((4.5, -2.0, 0))
+camp_grp.parent = relay_group
+col.objects.link(camp_grp)
 
-print(f"Exporting {len(all_objects)} objects to {output_path}...")
+# Circular stone fire ring (Diameter 1.2m)
+for a in range(8):
+    ang = a * (math.pi / 4)
+    sx = math.cos(ang) * 0.6
+    sy = math.sin(ang) * 0.6
+    add_box(f"Fire_Stone_{a}", (0.25, 0.22, 0.18), (sx, sy, 0.09), MAT_STONE_FIRE, parent=camp_grp)
+
+# Charred wood logs inside pit
+add_box("Fire_Log_1", (0.7, 0.16, 0.14), (0, 0, 0.08), MAT_WOOD_TRIM, rot=(0, 0, 0.4), parent=camp_grp)
+add_box("Fire_Log_2", (0.65, 0.14, 0.14), (0, 0, 0.14), MAT_WOOD_TRIM, rot=(0, 0, -0.7), parent=camp_grp)
+
+# Sitting Log Benches (Height 0.45m, Width 1.8m)
+add_box("Camp_Bench_1", (1.8, 0.4, 0.42), (0, 1.5, 0.21), MAT_WOOD_TRIM, parent=camp_grp)
+add_box("Camp_Bench_2", (0.4, 1.6, 0.42), (-1.5, 0, 0.21), MAT_WOOD_TRIM, parent=camp_grp)
+
+# Heavy Water Tank Cistern on Timber Stand (Height 2.2m, Diameter 1.3m)
+add_cylinder("Camp_WaterTank", 0.65, 1.6, (6.8, -6.2, 1.4), MAT_STEEL, vertices=10, parent=relay_group)
+add_box("Camp_WaterStand", (1.5, 1.5, 0.6), (6.8, -6.2, 0.3), MAT_WOOD_TRIM, parent=relay_group)
+
+# =============================================================================
+# 5. GENERATOR & WORKSHOP CORNER
+# =============================================================================
+work_grp = bpy.data.objects.new("Workshop_Zone", None)
+work_grp.location = Vector((-7.5, 2.0, 0))
+work_grp.parent = relay_group
+col.objects.link(work_grp)
+
+# Heavy Diesel Generator Unit (Width 1.4m, Depth 0.9m, Height 1.1m)
+add_box("Generator_Body", (1.4, 0.9, 1.0), (0, 0, 0.5), MAT_YELLOW_ACC, parent=work_grp)
+add_box("Generator_Base", (1.5, 1.0, 0.14), (0, 0, 0.07), MAT_STEEL, parent=work_grp)
+add_cylinder("Generator_Exhaust", 0.06, 1.2, (0.4, 0.25, 1.2), MAT_RUST_METAL, parent=work_grp)
+
+# Sturdy Wooden Worktable (Width 2.0m, Depth 0.85m, Height 0.9m)
+add_box("Worktable_Top", (2.0, 0.85, 0.1), (0, 2.2, 0.9), MAT_WOOD_TRIM, parent=work_grp)
+for tx in [-0.85, 0.85]:
+    for ty in [1.9, 2.5]:
+        add_box(f"Worktable_Leg_{tx}_{ty}", (0.12, 0.12, 0.85), (tx, ty, 0.425), MAT_WOOD_TRIM, parent=work_grp)
+
+# Jerry Cans on table & ground
+add_box("JerryCan_1", (0.35, 0.18, 0.42), (-0.4, 2.2, 1.15), MAT_RED_ACC, parent=work_grp)
+add_box("JerryCan_2", (0.35, 0.18, 0.42), (0.7, 0.9, 0.21), MAT_RED_ACC, parent=work_grp)
+
+# =============================================================================
+# 6. DYNAMIC SPAWN PLAYER MARKER
+# =============================================================================
+spawn_obj = bpy.data.objects.new("SPAWN_PLAYER", None)
+# Positioned inside open courtyard with direct unobstructed view towards exit gate
+spawn_obj.location = Vector((0.0, 2.5, 0.0))
+spawn_obj.parent = relay_group
+col.objects.link(spawn_obj)
+
+# =============================================================================
+# 7. COLLIDERS (Accurate Invisible Bounding Boxes)
+# =============================================================================
+def add_collider_box(name, size, pos, parent=relay_group):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0,0,0))
+    cobj = bpy.context.active_object
+    cobj.name = f"COL_BOX_{name}"
+    cobj.scale = Vector(size)
+    cobj.location = Vector(pos)
+    cobj.parent = parent
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    return cobj
+
+# Cabin Main Building Blocker (7.2m x 5.8m)
+add_collider_box("Cabin_Building", (7.2, 5.8, 3.5), (-3.5, -4.5, 1.75))
+
+# Radio Tower Footing Blocker (2.2m x 2.2m)
+add_collider_box("RadioTower", (2.2, 2.2, 4.0), (-8.5, -6.5, 2.0))
+
+# West Perimeter Fence Blocker
+add_collider_box("Fence_West", (0.5, 16.0, 2.5), (-10.5, -1.0, 1.25))
+
+# North Perimeter Fence Blocker
+add_collider_box("Fence_North", (19.0, 0.5, 2.5), (-1.0, -9.0, 1.25))
+
+# East Perimeter Fence Blocker
+add_collider_box("Fence_East", (0.5, 16.0, 2.5), (8.5, -1.0, 1.25))
+
+# South Front Fence - Left Flank
+add_collider_box("Fence_South_Left", (8.0, 0.5, 2.5), (-6.5, 6.0, 1.25))
+
+# South Front Fence - Right Flank
+add_collider_box("Fence_South_Right", (6.0, 0.5, 2.5), (5.5, 6.0, 1.25))
+
+# Generator Blocker
+add_collider_box("Generator", (1.6, 1.1, 1.4), (-7.5, 2.0, 0.7))
+
+# Water Cistern Blocker
+add_collider_box("WaterTank", (1.6, 1.6, 2.5), (6.8, -6.2, 1.25))
+
+# =============================================================================
+# EXPORT GLB
+# =============================================================================
+out_path = os.path.abspath("public/models/relay_hub.glb")
+os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
 bpy.ops.export_scene.gltf(
-    filepath=output_path,
+    filepath=out_path,
     export_format='GLB',
-    use_selection=True,
-    export_apply=True
+    use_selection=False,
+    export_apply=True,
+    export_yup=True
 )
 
-print("Properly scaled 'THE RELAY' exported successfully!")
+print(f"SUCCESS: The Relay Hub exported to {out_path}")
