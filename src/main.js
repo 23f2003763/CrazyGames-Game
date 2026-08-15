@@ -60,9 +60,12 @@ class GameApp {
 
     // 6. Physics & Walkable Surfaces
     this.collision = new ColliderRegistry(this.scene);
-    this.walkableSurfaceSystem = new WalkableSurfaceSystem(this.scene);
+    this.walkableSurfaceSystem = new WalkableSurfaceSystem(
+      this.scene, 
+      (x, z) => this.world.sampleHeight(x, z)
+    );
     if (this.world.terrainMesh) {
-      this.walkableSurfaceSystem.registerSurface(this.world.terrainMesh, 'terrain');
+      this.walkableSurfaceSystem.registerSurface(this.world.terrainMesh);
     }
 
     // 7. Playable Hero (Ryder)

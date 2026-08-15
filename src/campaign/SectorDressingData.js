@@ -39,10 +39,10 @@ export const SECTOR_DRESSING = {
     ],
 
     props: [
-      // Campfire with stone ring
-      { model: 'Campfire', x: 0.0, y: 0.0, z: -4.0, rotY: 0.0 },
-      // Diesel Generator
-      { model: 'Generator', x: -10.5, y: 0.0, z: 8.0, rotY: 0.2 },
+      // Courtyard Supply Cinderblocks
+      { model: 'CinderBlock', x: 0.0, y: 0.0, z: -4.0, rotY: 0.0 },
+      // Power Equipment Container
+      { model: 'Container_Red', x: -10.5, y: 0.0, z: 8.0, rotY: 0.2, scale: 0.5 },
       // Water Cistern
       { model: 'WaterTower', x: 9.5, y: 0.0, z: 12.0, rotY: -0.4 },
       // Courtyard Wooden Pallet with Barrels

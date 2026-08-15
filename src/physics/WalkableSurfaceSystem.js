@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { getTerrainHeight } from '../world/MapData.js';
 
 export class WalkableSurfaceSystem {
-  constructor(scene) {
+  constructor(scene, customSampleHeightFn = null) {
     this.scene = scene;
+    this.customSampleHeightFn = customSampleHeightFn;
     this.raycaster = new THREE.Raycaster();
     this.rayDirection = new THREE.Vector3(0, -1, 0);
     this.rayOrigin = new THREE.Vector3();
@@ -23,24 +23,33 @@ export class WalkableSurfaceSystem {
     }
   }
 
+  registerSurface(mesh) {
+    this.registerWalkable(mesh);
+  }
+
   buildFromRoots(roots) {
     this.walkableMeshes = [];
+    if (!roots) return;
     Object.values(roots).forEach(root => {
-      root.traverse((node) => {
-        if (node.isMesh && node.userData.isWalkable) {
-          this.walkableMeshes.push(node);
-        }
-      });
+      if (root && root.traverse) {
+        root.traverse((node) => {
+          if (node.isMesh && node.userData.isWalkable) {
+            this.walkableMeshes.push(node);
+          }
+        });
+      }
     });
   }
 
   rebuildFromScene() {
     this.walkableMeshes = [];
-    this.scene.traverse((node) => {
-      if (node.isMesh && node.userData.isWalkable) {
-        this.walkableMeshes.push(node);
-      }
-    });
+    if (this.scene) {
+      this.scene.traverse((node) => {
+        if (node.isMesh && node.userData.isWalkable) {
+          this.walkableMeshes.push(node);
+        }
+      });
+    }
   }
 
   toggleDebug(enabled) {
@@ -72,26 +81,25 @@ export class WalkableSurfaceSystem {
   }
 
   sampleHeight(x, z, currentY = 0) {
-    const terrainHeight = getTerrainHeight(x, z);
+    const baseHeight = this.customSampleHeightFn ? this.customSampleHeightFn(x, z) : 0.0;
     
     if (this.walkableMeshes.length === 0) {
       this.rebuildFromScene();
     }
 
-    // Cast downward from reasonable height above current player location
-    const startY = Math.max(currentY + 2.0, terrainHeight + 4.0);
-    this.rayOrigin.set(x, startY, z);
-    this.raycaster.set(this.rayOrigin, this.rayDirection);
-    this.raycaster.far = startY - (terrainHeight - 5.0);
+    if (this.walkableMeshes.length > 0) {
+      const startY = Math.max(currentY + 2.0, baseHeight + 4.0);
+      this.rayOrigin.set(x, startY, z);
+      this.raycaster.set(this.rayOrigin, this.rayDirection);
+      this.raycaster.far = startY - (baseHeight - 5.0);
 
-    const intersects = this.raycaster.intersectObjects(this.walkableMeshes, false);
-    
-    if (intersects.length > 0) {
-      // Return highest authored surface point + slight clearance (0.03) to prevent clipping
-      return intersects[0].point.y + 0.03;
+      const intersects = this.raycaster.intersectObjects(this.walkableMeshes, false);
+      
+      if (intersects.length > 0) {
+        return intersects[0].point.y + 0.03;
+      }
     }
 
-    // Fallback to terrain height + slight clearance
-    return terrainHeight + 0.03;
+    return baseHeight + 0.03;
   }
 }
