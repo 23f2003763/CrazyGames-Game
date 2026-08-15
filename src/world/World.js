@@ -56,7 +56,8 @@ export class World {
         'Zone',
         'Combat_Chunk_',
         'BlastCrater_',
-        'Highway_YellowStripe_'
+        'Highway_YellowStripe_',
+        'Bunker_'
       ];
 
       model.traverse((child) => {
@@ -89,6 +90,9 @@ export class World {
       // Apply runtime structure recomposition and material enhancements
       fixMilitaryCheckpointLayout(model);
 
+      // Load new handcrafted Hero Military Bunker GLB
+      this.loadHeroBunker(model);
+
       this.scene.add(model);
       if (!this.militaryArenaGround) {
         this.militaryArenaGround =
@@ -97,6 +101,34 @@ export class World {
       console.log('Military Checkpoint "OUTPOST OMEGA" loaded successfully at (100, -72)');
     }, undefined, (error) => {
       console.error('Error loading military checkpoint GLB:', error);
+    });
+  }
+
+  loadHeroBunker(parentModel) {
+    const loader = new GLTFLoader();
+    loader.load('/models/hero_military_bunker.glb', (gltf) => {
+      const bunker = gltf.scene;
+      bunker.name = 'HeroMilitaryBunker';
+      bunker.position.set(-13.5, 0.0, 8.5);
+      bunker.scale.set(1.05, 1.05, 1.05);
+
+      bunker.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material.flatShading = true;
+            if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
+            if (child.material.emissiveMap) child.material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      parentModel.add(bunker);
+      console.log('Hero Military Bunker loaded successfully into Military Checkpoint');
+    }, undefined, (error) => {
+      console.error('Error loading hero military bunker GLB:', error);
     });
   }
 
