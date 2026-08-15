@@ -4,11 +4,13 @@ import { MAP_CONFIG, CLEARINGS, roadSpline, dirtSplines, getTerrainHeight, getCl
 import { Terrain } from './Terrain.js';
 import { RoadSystem } from './RoadSystem.js';
 import { PropFactory } from './PropFactory.js';
+import { AuthoredDressing } from './AuthoredDressing.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
  * foliage, and reserved clearing zones.
  * Step 2.1: Loads and integrates the custom Blender low-poly Abandoned Gas Station.
+ * Step 2.3: Handcrafted authored dressing for the 40-50m approach corridor.
  */
 export class World {
   constructor(scene) {
@@ -22,6 +24,9 @@ export class World {
     // Instanced prop containers
     this.instancedMeshes = [];
     this.spawnEnvironmentalProps();
+
+    // Handcrafted authored dressing around gas station approach
+    this.authoredDressing = new AuthoredDressing(this.scene);
 
     // Load handcrafted GLB structures
     this.loadGasStation();
