@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MAP_CONFIG, CLEARINGS, roadSpline, dirtSplines, getTerrainHeight, getClosestPointOnSpline } from './MapData.js';
 import { Terrain } from './Terrain.js';
 import { RoadSystem } from './RoadSystem.js';
@@ -7,8 +8,7 @@ import { PropFactory } from './PropFactory.js';
 /**
  * World: Orchestrates the terrain, road network, environmental props,
  * foliage, and reserved clearing zones.
- * Step 1.1: Populates dense perimeter mountain forests and rock bluffs
- * ensuring total scenic immersion with zero visible boundaries.
+ * Step 2.1: Loads and integrates the custom Blender low-poly Abandoned Gas Station.
  */
 export class World {
   constructor(scene) {
@@ -22,6 +22,41 @@ export class World {
     // Instanced prop containers
     this.instancedMeshes = [];
     this.spawnEnvironmentalProps();
+
+    // Load handcrafted GLB structures
+    this.loadGasStation();
+  }
+
+  loadGasStation() {
+    const loader = new GLTFLoader();
+    loader.load('/models/abandoned_gas_station.glb', (gltf) => {
+      const model = gltf.scene;
+      model.name = 'AbandonedGasStation';
+      
+      const posX = -68;
+      const posZ = -36;
+      const posY = getTerrainHeight(posX, posZ) + 0.05;
+      
+      model.position.set(posX, posY, posZ);
+      model.rotation.y = Math.PI * 0.18; // Orient naturally towards the road
+      model.scale.set(1.0, 1.0, 1.0);
+
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material.flatShading = true;
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      this.scene.add(model);
+      console.log('Abandoned Gas Station loaded successfully at (-68, -36)');
+    }, undefined, (error) => {
+      console.error('Error loading gas station GLB:', error);
+    });
   }
 
   spawnEnvironmentalProps() {
