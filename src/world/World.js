@@ -33,13 +33,14 @@ export class World {
       const model = gltf.scene;
       model.name = 'AbandonedGasStation';
       
-      const posX = -68;
-      const posZ = -36;
-      const posY = getTerrainHeight(posX, posZ) + 0.05;
+      const posX = -66;
+      const posZ = -34;
+      const posY = getTerrainHeight(posX, posZ) + 0.02;
       
       model.position.set(posX, posY, posZ);
-      model.rotation.y = Math.PI * 0.18; // Orient naturally towards the road
-      model.scale.set(1.0, 1.0, 1.0);
+      // Rotate 148 degrees to face storefront and pump island directly into isometric view
+      model.rotation.y = Math.PI * 0.82;
+      model.scale.set(1.15, 1.15, 1.15); // Exaggerated chunky landmark scale
 
       model.traverse((child) => {
         if (child.isMesh) {
@@ -47,13 +48,14 @@ export class World {
           child.receiveShadow = true;
           if (child.material) {
             child.material.flatShading = true;
+            child.material.roughness = Math.max(0.4, child.material.roughness || 0.7);
             child.material.needsUpdate = true;
           }
         }
       });
 
       this.scene.add(model);
-      console.log('Abandoned Gas Station loaded successfully at (-68, -36)');
+      console.log('Landmark Abandoned Gas Station loaded successfully at (-66, -34)');
     }, undefined, (error) => {
       console.error('Error loading gas station GLB:', error);
     });

@@ -85,11 +85,11 @@ export const CLEARINGS = [
   {
     id: 'gasStation',
     name: '2. Gas Station Clearing',
-    x: -68,
-    z: -36,
-    radius: 26,
-    description: 'Wide flat gravel & asphalt lot reserved for gas station, garage, and pump canopy',
-    targetCameraPos: new THREE.Vector3(-68, 0, -36),
+    x: -66,
+    z: -34,
+    radius: 30,
+    description: 'Post-apocalyptic landmark gas station with store, pumps, car wreck, and collapsed canopy',
+    targetCameraPos: new THREE.Vector3(-66, 2.2, -34),
   },
   {
     id: 'ravine',
