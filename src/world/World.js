@@ -7,6 +7,7 @@ import { PropFactory } from './PropFactory.js';
 import { AuthoredDressing } from './AuthoredDressing.js';
 import { MilitaryArenaGround } from './MilitaryArenaGround.js';
 import { fixMilitaryCheckpointLayout } from './MilitaryCheckpointLayout.js';
+import { addMilitaryWatchtowers } from './MilitaryWatchtowers.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
@@ -89,6 +90,7 @@ export class World {
 
       // Apply runtime structure recomposition and material enhancements
       fixMilitaryCheckpointLayout(model);
+      addMilitaryWatchtowers(model);
 
       // Load Hero Military Bunker asset and attach as child
       loader.load('/models/hero_military_bunker.glb', (bunkerGltf) => {
