@@ -6,6 +6,7 @@ import { RoadSystem } from './RoadSystem.js';
 import { PropFactory } from './PropFactory.js';
 import { AuthoredDressing } from './AuthoredDressing.js';
 import { MilitaryArenaGround } from './MilitaryArenaGround.js';
+import { fixMilitaryCheckpointLayout } from './MilitaryCheckpointLayout.js';
 
 /**
  * World: Orchestrates the terrain, road network, environmental props,
@@ -84,6 +85,9 @@ export class World {
           }
         }
       });
+
+      // Apply runtime structure recomposition and material enhancements
+      fixMilitaryCheckpointLayout(model);
 
       this.scene.add(model);
       if (!this.militaryArenaGround) {
