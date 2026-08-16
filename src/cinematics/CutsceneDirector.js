@@ -92,9 +92,11 @@ export class CutsceneDirector {
     this.startTargetPos.copy(this.cameraController.target);
 
     this.endTargetPos = shot.targetPos.clone();
-    this.endCamPos = shot.camOffset
-      ? shot.targetPos.clone().add(shot.camOffset)
-      : shot.targetPos.clone().add(new THREE.Vector3(10, 14, 10));
+    this.endCamPos = shot.camPos
+      ? shot.camPos.clone()
+      : (shot.camOffset
+        ? shot.targetPos.clone().add(shot.camOffset)
+        : shot.targetPos.clone().add(new THREE.Vector3(10, 14, 10)));
 
     if (shot.onStart) {
       shot.onStart();
@@ -129,33 +131,37 @@ export class CutsceneDirector {
   }
 
   playOpeningSequence(onComplete) {
-    const mastPos = campaignFrame.requireAnchor('relay_mast');
-    const consolePos = campaignFrame.requireAnchor('signal_console');
-    const hqPos = campaignFrame.requireAnchor('mara_hub');
+    try {
+      const camAntenna = campaignFrame.requireAnchor('CAM_OPEN_ANTENNA');
+      const targetAntenna = campaignFrame.requireAnchor('TARGET_ANTENNA');
+      const camConsole = campaignFrame.requireAnchor('CAM_OPEN_CONSOLE');
+      const targetConsole = campaignFrame.requireAnchor('TARGET_SIGNAL_CONSOLE');
+      const camMara = campaignFrame.requireAnchor('CAM_OPEN_MARA');
+      const targetMara = campaignFrame.requireAnchor('TARGET_MARA');
 
-    this.playSequence([
-      // Shot 1: Antenna sweeps and pulses
-      {
-        targetPos: mastPos,
-        camOffset: new THREE.Vector3(12, 16, 12),
-        duration: 1.6,
-        subtitle: { speaker: 'MARA', text: 'Telemetry alert... External antenna picking up unknown carrier wave.' }
-      },
-      // Shot 2: Console powers on
-      {
-        targetPos: consolePos,
-        camOffset: new THREE.Vector3(6, 8, 6),
-        duration: 1.6,
-        subtitle: { speaker: 'MARA', text: 'Console just powered itself on with an incoming packet.' }
-      },
-      // Shot 3: Mara turns to doorway
-      {
-        targetPos: hqPos,
-        camOffset: new THREE.Vector3(8, 12, 8),
-        duration: 1.6,
-        subtitle: { speaker: 'MARA', text: 'Ryder. Come here.' }
-      }
-    ], onComplete);
+      this.playSequence([
+        {
+          targetPos: targetAntenna,
+          camPos: camAntenna,
+          duration: 1.5,
+          subtitle: { speaker: 'MARA', text: 'Telemetry alert... External antenna picking up unknown carrier wave.' }
+        },
+        {
+          targetPos: targetConsole,
+          camPos: camConsole,
+          duration: 1.5,
+          subtitle: { speaker: 'MARA', text: 'Console just powered itself on with an incoming packet.' }
+        },
+        {
+          targetPos: targetMara,
+          camPos: camMara,
+          duration: 1.5,
+          subtitle: { speaker: 'MARA', text: 'Ryder. I need you in here.' }
+        }
+      ], onComplete);
+    } catch (e) {
+      throw new Error(`Required cinematic socket missing: ${e.message}`);
+    }
   }
 
   update(dt) {

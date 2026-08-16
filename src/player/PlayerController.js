@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { inputRouter } from '../input/InputRouter.js';
+import { corridorConstraint } from '../campaign/PlayableCorridorConstraint.js';
 
 function dampAlpha(rate, dt) {
   return 1 - Math.exp(-rate * dt);
@@ -214,6 +215,8 @@ export class PlayerController {
       this.player.position.add(displacement);
     }
 
+    this.player.position.copy(corridorConstraint.clampPosition(this.player.position));
+
     this.updateRotation(dt * 14.0);
   }
 
@@ -231,6 +234,8 @@ export class PlayerController {
     } else {
       this.player.position.add(displacement);
     }
+
+    this.player.position.copy(corridorConstraint.clampPosition(this.player.position));
 
     this.targetRotation = Math.atan2(-this.dodgeDir.x, -this.dodgeDir.z);
     this.updateRotation(dt * 18.0);

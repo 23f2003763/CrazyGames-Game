@@ -52,24 +52,65 @@ export class ScarabEnemy extends Enemy {
   }
 
   createElectrificationVFX() {
-    const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(12 * 3);
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({
+    this.elecGroup = new THREE.Group();
+
+    // 1. Arc Sparks (Points)
+    const sparkGeo = new THREE.BufferGeometry();
+    const sparkPos = new Float32Array(16 * 3);
+    sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+    const sparkMat = new THREE.PointsMaterial({
       color: 0x00f0ff,
-      size: 0.16,
+      size: 0.12,
       transparent: true,
       opacity: 0.9,
       blending: THREE.AdditiveBlending
     });
-    this.arcSparks = new THREE.Points(geo, mat);
-    this.arcSparks.visible = false;
-    this.group.add(this.arcSparks);
+    this.arcSparks = new THREE.Points(sparkGeo, sparkMat);
+    this.elecGroup.add(this.arcSparks);
+
+    // 2. Crawling Line Segments
+    const lineGeo = new THREE.BufferGeometry();
+    const linePos = new Float32Array(10 * 3);
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x00f0ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, linewidth: 2
+    });
+    this.crawlLines = new THREE.LineSegments(lineGeo, lineMat);
+    this.elecGroup.add(this.crawlLines);
+
+    this.elecGroup.visible = false;
+    this.group.add(this.elecGroup);
   }
 
   electrify(duration = 0.35) {
     this.electrifiedTimer = duration;
-    this.arcSparks.visible = true;
+    this.elecGroup.visible = true;
+    
+    // Small metal fragments jump (2-3 tiny boxes)
+    const fragCount = 2 + Math.floor(Math.random() * 2);
+    const fragGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+    const fragMat = new THREE.MeshStandardMaterial({ color: 0x8b949e, roughness: 0.6, metalness: 0.8 });
+    for (let i = 0; i < fragCount; i++) {
+      const mesh = new THREE.Mesh(fragGeo, fragMat);
+      mesh.position.copy(this.position).add(new THREE.Vector3(0, 0.4, 0));
+      this.scene.add(mesh);
+      const vel = new THREE.Vector3(
+        (Math.random() - 0.5) * 3.0,
+        Math.random() * 2.5 + 1.0,
+        (Math.random() - 0.5) * 3.0
+      );
+      let life = 0.4;
+      const animFrag = () => {
+        life -= 0.03;
+        vel.y -= 9.8 * 0.03;
+        mesh.position.addScaledVector(vel, 0.03);
+        mesh.rotation.x += 0.3;
+        mesh.rotation.y += 0.3;
+        if (life > 0) requestAnimationFrame(animFrag);
+        else { this.scene.remove(mesh); mesh.geometry.dispose(); }
+      };
+      animFrag();
+    }
   }
 
   handleDamaged(damage, damageType, hitPoint, knockbackDir, knockbackForce) {
@@ -156,20 +197,44 @@ export class ScarabEnemy extends Enemy {
 
     if (this.electrifiedTimer > 0) {
       this.electrifiedTimer -= dt;
-      if (this.arcSparks) {
+      if (this.elecGroup) {
+        // Sparks
         const posAttr = this.arcSparks.geometry.attributes.position;
-        for (let i = 0; i < 12; i++) {
-          posAttr.setXYZ(
-            i,
-            (Math.random() - 0.5) * 0.8,
-            Math.random() * 0.5 + 0.1,
-            (Math.random() - 0.5) * 0.8
-          );
+        for (let i = 0; i < 16; i++) {
+          posAttr.setXYZ(i, (Math.random() - 0.5) * 0.9, Math.random() * 0.6 + 0.1, (Math.random() - 0.5) * 0.9);
         }
         posAttr.needsUpdate = true;
+        
+        // Crawling lines
+        const lineAttr = this.crawlLines.geometry.attributes.position;
+        for (let i = 0; i < 10; i++) {
+          lineAttr.setXYZ(i, (Math.random() - 0.5) * 0.9, Math.random() * 0.6 + 0.1, (Math.random() - 0.5) * 0.9);
+        }
+        lineAttr.needsUpdate = true;
+        
+        // Model Jitter & Lean
+        if (this.model) {
+          this.model.position.x = (Math.random() - 0.5) * 0.1;
+          this.model.position.z = (Math.random() - 0.5) * 0.1;
+          this.model.rotation.z = (Math.random() - 0.5) * 0.2;
+        }
+
+        // Eye Flicker
+        if (this.eyeMesh && this.originalMaterials.has(this.eyeMesh.uuid)) {
+          const eyeMat = this.originalMaterials.get(this.eyeMesh.uuid);
+          eyeMat.emissiveIntensity = Math.random() > 0.5 ? 0 : 2.0;
+        }
       }
+      
       if (this.electrifiedTimer <= 0) {
-        this.arcSparks.visible = false;
+        this.elecGroup.visible = false;
+        if (this.model) {
+          this.model.position.set(0, 0, 0);
+          this.model.rotation.z = 0;
+        }
+        if (this.eyeMesh && this.originalMaterials.has(this.eyeMesh.uuid)) {
+          this.originalMaterials.get(this.eyeMesh.uuid).emissiveIntensity = 1.0;
+        }
       }
     }
 

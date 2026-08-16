@@ -29,10 +29,11 @@ export class ArcTrail {
     const positions = [];
     const colors = [];
     const indices = [];
+    const uvs = [];
 
-    const cMudCenter = new THREE.Color(0x2c2218);
-    const cWetEarth = new THREE.Color(0x3e3224);
-    const cShoulder = new THREE.Color(0x4a4838);
+    const cMudCenter = new THREE.Color(0x402b1a); // deep brown compacted mud
+    const cWetEarth = new THREE.Color(0x2a1c12); // darker wet grooves
+    const cShoulder = new THREE.Color(0x615445); // warm dry soil / gravel
 
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
@@ -69,6 +70,15 @@ export class ArcTrail {
         cShoulder.r, cShoulder.g, cShoulder.b
       );
 
+      const v = (t * campaignPath.totalLength) / 4.0;
+      uvs.push(
+        0.0, v,
+        0.2, v,
+        0.5, v,
+        0.8, v,
+        1.0, v
+      );
+
       if (i < steps) {
         indices.push(base, base + 5, base + 1);
         indices.push(base + 1, base + 5, base + 6);
@@ -87,10 +97,15 @@ export class ArcTrail {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
     const dirtMaps = proceduralTextures.getDirtTexture(256);
+    dirtMaps.diffuse.wrapS = THREE.RepeatWrapping;
+    dirtMaps.diffuse.wrapT = THREE.RepeatWrapping;
+    dirtMaps.roughness.wrapS = THREE.RepeatWrapping;
+    dirtMaps.roughness.wrapT = THREE.RepeatWrapping;
     dirtMaps.diffuse.repeat.set(6, 32);
     dirtMaps.roughness.repeat.set(6, 32);
 

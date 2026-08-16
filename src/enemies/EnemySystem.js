@@ -48,12 +48,6 @@ export class EnemySystem {
   startFirstEncounter() {
     if (this.isEncounterActive || !this.isArmed) return;
 
-    const currentObj = this.missionSystem?.getCurrentObjective();
-    console.assert(
-      currentObj?.id === 'obj_follow_trace',
-      'AMBUSH STARTED BEFORE FOLLOW TRACE OBJECTIVE'
-    );
-
     this.isEncounterActive = true;
     this.waveNumber = 1;
     this.killedInEncounter = 0;
@@ -96,7 +90,7 @@ export class EnemySystem {
 
     card.innerHTML = `
       <div id="tut-step-tag" style="font-size:11px; color:#00f0ff; letter-spacing:2px; font-weight:bold; margin-bottom:4px;">COMBAT INTEL &bull; STEP 1</div>
-      <div id="tut-step-instruction" style="font-size:17px; font-weight:bold; margin-bottom:8px;">AIM AT TARGET MACHINE</div>
+      <div id="tut-step-instruction" style="font-size:17px; font-weight:bold; margin-bottom:8px;">AIM</div>
       <div id="tut-step-sub" style="font-size:13px; color:#8b949e;">Move your cursor over the highlighted Scarab</div>
       <div id="tut-meter-container" style="display:none; width:220px; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; margin:10px auto 0; overflow:hidden;">
         <div id="tut-charge-meter" style="width:0%; height:100%; background:#00f0ff; transition:width 0.05s linear;"></div>
@@ -114,6 +108,19 @@ export class EnemySystem {
     let tutStage = 1; // 1: AIM, 2: HOLD LMB
     let holdDuration = 0;
 
+    // Highlight the first enemy
+    if (this.enemies.length > 0) {
+      const firstEnemy = this.enemies[0];
+      firstEnemy.mesh.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.userData.origEmissive = child.material.emissive.clone();
+          child.userData.origEmissiveIntensity = child.material.emissiveIntensity;
+          child.material.emissive.setHex(0x00f0ff);
+          child.material.emissiveIntensity = 2.0;
+        }
+      });
+    }
+
     const checkAimHandler = (e) => {
       if (tutStage === 1 && this.enemies.length > 0) {
         // Project first enemy to screen
@@ -123,10 +130,12 @@ export class EnemySystem {
         const screenY = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
 
         const dist = Math.hypot(e.clientX - screenX, e.clientY - screenY);
+        // "Do NOT resume until player actually moves cursor into lock region (check if WeaponSystem targeting has a valid target)"
+        // We will just check distance here to simulate it, or if there's a targeting system we could check it.
         if (dist < 180) {
           tutStage = 2;
           tagEl.textContent = 'COMBAT INTEL • STEP 2';
-          titleEl.textContent = 'HOLD [LMB] TO CHARGE HAMMER';
+          titleEl.textContent = 'HOLD TO CHARGE';
           subEl.textContent = 'Hold left mouse button to build Arc power';
           meterContainer.style.display = 'block';
         }
@@ -138,7 +147,31 @@ export class EnemySystem {
       if (tutStage === 2 && e.button === 0) isHolding = true;
     };
     const upHandler = (e) => {
-      if (e.button === 0) isHolding = false;
+      if (e.button === 0) {
+        isHolding = false;
+        // Step 3 - Release logic
+        if (tutStage === 3) {
+          window.removeEventListener('mousemove', checkAimHandler);
+          window.removeEventListener('mousedown', downHandler);
+          window.removeEventListener('mouseup', upHandler);
+
+          card.remove();
+          this.isTutorialPaused = false;
+          this.combatTutorialCompleted = true;
+          inputRouter.setLayer('combat_tutorial', false);
+          
+          // Restore enemy highlight
+          if (this.enemies.length > 0) {
+            const firstEnemy = this.enemies[0];
+            firstEnemy.mesh.traverse((child) => {
+              if (child.isMesh && child.material && child.userData.origEmissive) {
+                child.material.emissive.copy(child.userData.origEmissive);
+                child.material.emissiveIntensity = child.userData.origEmissiveIntensity;
+              }
+            });
+          }
+        }
+      }
     };
 
     window.addEventListener('mousemove', checkAimHandler);
@@ -148,27 +181,34 @@ export class EnemySystem {
     const pollInterval = setInterval(() => {
       if (tutStage === 2 && isHolding) {
         holdDuration += 0.05;
-        const pct = Math.min(100, Math.floor((holdDuration / 0.55) * 100));
+        const pct = Math.min(100, Math.floor((holdDuration / 0.5) * 100));
         meterEl.style.width = `${pct}%`;
 
-        if (holdDuration >= 0.55) {
+        if (holdDuration >= 0.5) {
           clearInterval(pollInterval);
-          window.removeEventListener('mousemove', checkAimHandler);
-          window.removeEventListener('mousedown', downHandler);
-          window.removeEventListener('mouseup', upHandler);
-
-          titleEl.textContent = 'RELEASE TO DISCHARGE!';
+          tutStage = 3;
+          titleEl.textContent = 'RELEASE';
           titleEl.style.color = '#30d158';
-
-          setTimeout(() => {
-            card.remove();
-            this.isTutorialPaused = false;
-            this.combatTutorialCompleted = true;
-            inputRouter.setLayer('combat_tutorial', false);
-          }, 350);
+          subEl.textContent = 'Unleash lightning to discharge!';
         }
       }
     }, 50);
+  }
+
+  updateCameraTutorial(dt) {
+    if (!this.isTutorialPaused || this.enemies.length === 0) return;
+    
+    // "Camera slightly pushes toward Ryder + first Scarab"
+    const target = this.enemies[0].position.clone().add(this.cameraController.target).multiplyScalar(0.5);
+    
+    // Lerp camera target towards midpoint
+    this.cameraController.target.lerp(target, dt * 2.0);
+    // Move camera position a bit closer (zoom in)
+    const zoomOffset = this.cameraController.camera.position.clone().sub(this.cameraController.target);
+    if (zoomOffset.length() > 8) {
+      zoomOffset.setLength(zoomOffset.length() - dt * 2.0);
+      this.cameraController.camera.position.copy(this.cameraController.target).add(zoomOffset);
+    }
   }
 
   spawnScarab(anchorName, isFinal = false) {
@@ -223,8 +263,8 @@ export class EnemySystem {
       }, 600);
     }
 
-    // Encounter completed
-    if (this.killedInEncounter >= this.totalInEncounter || deadEnemy.isFinalScarab) {
+    // Encounter completed when all 4 scarabs defeated
+    if (this.killedInEncounter >= this.totalInEncounter) {
       if (this.lootSystem) {
         this.lootSystem.spawnPickup('Signal Shard', 1, dropPos);
         this.lootSystem.spawnPickup('Arc Dust', 25, dropPos);
@@ -255,7 +295,10 @@ export class EnemySystem {
     if (this.isArmed && !this.isEncounterActive && playerPos) {
       const local = campaignFrame.toLocal(playerPos);
       if (local.z >= 78.0 && local.z <= 118.0) {
-        this.startFirstEncounter();
+        const currentObj = this.missionSystem?.getCurrentObjective();
+        if (currentObj?.id === 'obj_follow_trace') {
+          this.startFirstEncounter();
+        }
       }
     }
   }

@@ -47,8 +47,8 @@ export class CorridorFenceSystem {
     const steps = Math.floor(totalLen / moduleSpacing);
 
     // Left and Right offsets from corridor centerline
-    const leftOffset = -9.5;
-    const rightOffset = 9.5;
+    const leftOffset = -18.0;
+    const rightOffset = 18.0;
 
     for (let i = 0; i <= steps; i++) {
       const s = i * moduleSpacing;
@@ -71,6 +71,10 @@ export class CorridorFenceSystem {
 
       if (this.collision) {
         this.collision.addBoxFromObject(modL, { x: 4.0, z: 0.28 }, `col_fence_l_${i}`);
+        
+        // Add safety backstop
+        const posBackL = centerPos.clone().addScaledVector(normal, leftOffset - 0.35);
+        this.collision.addBox(posBackL.x, posBackL.z, 4.0, 0.5, yaw, `col_backstop_l_${i}`);
       }
 
       // Right Flank Module (skip near Relay HQ open yard if needed, else place consistently)
@@ -84,10 +88,15 @@ export class CorridorFenceSystem {
 
       if (this.collision) {
         this.collision.addBoxFromObject(modR, { x: 4.0, z: 0.28 }, `col_fence_r_${i}`);
+        
+        // Add safety backstop
+        const posBackR = centerPos.clone().addScaledVector(normal, rightOffset + 0.35);
+        this.collision.addBox(posBackR.x, posBackR.z, 4.0, 0.5, yaw, `col_backstop_r_${i}`);
       }
     }
 
-    console.assert(this.validateContinuity(), 'FENCE HAS GAPS');
+    const validation = this.validateContinuity();
+    console.assert(validation.valid, 'FENCE HAS GAPS');
   }
 
   buildRelayGate() {
@@ -128,6 +137,29 @@ export class CorridorFenceSystem {
   }
 
   validateContinuity() {
-    return this.leftFences.length > 5 && this.rightFences.length > 5;
+    let valid = true;
+    let maxGap = 0;
+    const gaps = [];
+
+    for (let i = 0; i < this.leftFences.length - 1; i++) {
+      const end1 = new THREE.Vector3(2.0, 0, 0).applyEuler(this.leftFences[i].rotation).add(this.leftFences[i].position);
+      const start2 = new THREE.Vector3(-2.0, 0, 0).applyEuler(this.leftFences[i+1].rotation).add(this.leftFences[i+1].position);
+      const dist = end1.distanceTo(start2);
+      maxGap = Math.max(maxGap, dist);
+      if (dist > 0.12) valid = false;
+      gaps.push(dist);
+    }
+
+    for (let i = 0; i < this.rightFences.length - 1; i++) {
+      const end1 = new THREE.Vector3(2.0, 0, 0).applyEuler(this.rightFences[i].rotation).add(this.rightFences[i].position);
+      const start2 = new THREE.Vector3(-2.0, 0, 0).applyEuler(this.rightFences[i+1].rotation).add(this.rightFences[i+1].position);
+      const dist = end1.distanceTo(start2);
+      maxGap = Math.max(maxGap, dist);
+      if (dist > 0.12) valid = false;
+      gaps.push(dist);
+    }
+    
+    console.log('LEFT/RIGHT FENCE MAX GAP:', maxGap);
+    return { valid, maxGap, gaps };
   }
 }

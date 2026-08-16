@@ -96,6 +96,10 @@ export class CampaignFrame {
     }
     return this.localVecToWorld(local);
   }
+
+  setAnchorWorld(anchorName, worldPos) {
+    this.anchors.set(anchorName, this.toLocal(worldPos));
+  }
 }
 
 export const campaignFrame = new CampaignFrame(new THREE.Vector3(0, 0, 0));

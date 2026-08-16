@@ -7,6 +7,8 @@ import { InteriorRevealSystem } from '../world/InteriorRevealSystem.js';
 import { campaignFrame } from './CampaignFrame.js';
 import { campaignPath } from './CampaignPath.js';
 import { proceduralTextures } from '../rendering/ProceduralTextures.js';
+import { createCampaignGroundMaterial } from '../rendering/CampaignGroundMaterial.js';
+import { GroundDetailSystem } from '../rendering/GroundDetailSystem.js';
 
 /**
  * CampaignWorld: High-quality campaign environment with muddy Arc trail ribbon,
@@ -27,6 +29,9 @@ export class CampaignWorld {
     // 2. Authored Muddy Arc Trail Ribbon
     this.trail = new ArcTrail(this.scene);
     console.assert(this.trail, 'Campaign trail missing');
+
+    // 2.5 Ground Detail Scatter
+    this.groundDetailSystem = new GroundDetailSystem(this.scene, this.sampleHeight.bind(this));
 
     // 3. Interior Reveal System
     this.interiorRevealSystem = new InteriorRevealSystem();
@@ -59,8 +64,8 @@ export class CampaignWorld {
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
 
-    const cLush = new THREE.Color(0x324d26);
-    const cTrailEarth = new THREE.Color(0x484234);
+    const cLush = new THREE.Color(0.0, 0.0, 0.0); // R=0 means grass
+    const cTrailEarth = new THREE.Color(1.0, 0.0, 0.0); // R=1 means dirt
     const tempCol = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
@@ -89,18 +94,7 @@ export class CampaignWorld {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
 
-    const grassMaps = proceduralTextures.getGrassTexture(256);
-    grassMaps.diffuse.repeat.set(32, 32);
-    grassMaps.roughness.repeat.set(32, 32);
-
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      map: grassMaps.diffuse,
-      roughnessMap: grassMaps.roughness,
-      roughness: 0.90,
-      metalness: 0.02,
-      flatShading: true,
-    });
+    const mat = createCampaignGroundMaterial();
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
@@ -116,12 +110,14 @@ export class CampaignWorld {
     const pathP = campaignPath.getWorldPointAt(t);
     const distFromPath = Math.sqrt((x - pathP.x) * (x - pathP.x) + (z - pathP.z) * (z - pathP.z));
 
-    if (distFromPath <= 22.0) {
-      return 0.0;
+    let h = Math.sin(x * 0.3) * Math.cos(z * 0.3) * 0.12;
+
+    if (distFromPath > 18.0) {
+      const excess = distFromPath - 18.0;
+      h += Math.min(excess, 20.0) * 0.25;
     }
 
-    const excess = distFromPath - 22.0;
-    return Math.pow(Math.min(excess / 24.0, 1.8), 2.0) * 14.0;
+    return h;
   }
 
   update(dt, playerPos) {
@@ -129,7 +125,7 @@ export class CampaignWorld {
       this.interiorRevealSystem.update(dt, playerPos);
     }
     if (this.sectorManager) {
-      this.sectorManager.update(playerPos);
+      this.sectorManager.update(playerPos, dt);
     }
   }
 }

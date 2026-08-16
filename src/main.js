@@ -7,6 +7,7 @@ import { PlayerAnimator } from './player/PlayerAnimator.js';
 import { ColliderRegistry } from './physics/ColliderRegistry.js';
 import { WalkableSurfaceSystem } from './physics/WalkableSurfaceSystem.js';
 import { MovementFX } from './vfx/MovementFX.js';
+import { ElectricFenceFX } from './vfx/ElectricFenceFX.js';
 
 // Arcfall Protocol Core Systems
 import { inputRouter } from './input/InputRouter.js';
@@ -135,6 +136,7 @@ class GameApp {
 
     // 12. Visual FX & Particles
     this.movementFX = new MovementFX(this.scene);
+    this.electricFenceFX = new ElectricFenceFX(this.scene, this.audioSystem);
 
     // 13. Debug Overlay (F5) & Collision Wireframe Toggle (F7)
     this.debugOverlay = new CampaignDebugOverlay(
@@ -193,62 +195,70 @@ class GameApp {
   animate() {
     requestAnimationFrame(this.animate);
 
-    const deltaTime = Math.min(this.clock.getDelta(), 0.1);
+    const realDeltaTime = Math.min(this.clock.getDelta(), 0.1);
+    const isPaused = this.enemySystem && this.enemySystem.isTutorialPaused;
+    const gameplayDelta = isPaused ? 0 : realDeltaTime;
 
     // 1. Cutscene Director (letterbox & camera control)
     if (this.cutsceneDirector.isPlaying) {
-      this.cutsceneDirector.update(deltaTime);
-      this.playerAnimator.update(deltaTime, new THREE.Vector3(), 'idle');
+      this.cutsceneDirector.update(gameplayDelta);
+      this.playerAnimator.update(gameplayDelta, new THREE.Vector3(), 'idle');
     } else {
       // 2. Hero Movement & Animation
-      if (inputRouter.canMove()) {
-        this.playerController.update(deltaTime);
+      if (inputRouter.canMove() && !isPaused) {
+        this.playerController.update(gameplayDelta);
       }
       this.playerAnimator.update(
-        deltaTime, 
+        gameplayDelta, 
         this.playerController.velocity, 
         this.playerController.state
       );
 
       // 3. Stormcore Hammer Charging & Discharge
-      this.weaponSystem.update(deltaTime);
+      // Weapon system gets realDeltaTime so charge VFX works during pause
+      this.weaponSystem.update(realDeltaTime);
 
       // 4. Camera Follow
-      this.cameraController.update(deltaTime);
+      if (!isPaused) {
+        this.cameraController.update(gameplayDelta);
+      } else {
+        this.enemySystem.updateCameraTutorial(realDeltaTime);
+      }
     }
 
     // 5. Combat & Machine Enemies Update
-    this.combatSystem.update(deltaTime);
-    this.enemySystem.update(deltaTime, this.player.position);
+    this.combatSystem.update(gameplayDelta);
+    this.enemySystem.update(gameplayDelta, this.player.position);
 
     // 6. 2-Step Tutorial Update
     if (!this.tutorialDirector.isCompleted) {
-      this.tutorialDirector.update(deltaTime, this.playerController);
+      this.tutorialDirector.update(gameplayDelta, this.playerController);
     }
 
     // 7. World, Interiors, Interactivity & Missions
-    this.world.update(deltaTime, this.player.position);
-    if (inputRouter.canInteract()) {
+    this.world.update(gameplayDelta, this.player.position);
+    if (inputRouter.canInteract() && !isPaused) {
       this.interactionSystem.update(this.player.position);
     }
-    this.lootSystem.update(deltaTime, this.player.position);
-    this.npcSystem.update(deltaTime, this.player.position);
+    this.lootSystem.update(gameplayDelta, this.player.position);
+    this.npcSystem.update(gameplayDelta, this.player.position);
     this.missionSystem.update(this.player.position);
-    this.breadcrumbSystem.update(deltaTime, this.player.position);
-    this.objectiveGuidance.update(deltaTime, this.player.position);
+    this.breadcrumbSystem.update(gameplayDelta, this.player.position);
+    this.objectiveGuidance.update(gameplayDelta, this.player.position);
 
     // 8. Visual Particles & Physics Debug
-    if (this.playerController.state === 'dodge') {
+    if (this.playerController.state === 'dodge' && !isPaused) {
       this.movementFX.emitDust(this.player.position.x, this.player.position.z, 1.5, 2);
     }
-    this.movementFX.update(deltaTime, this.cameraController.camera);
+    this.movementFX.update(gameplayDelta, this.cameraController.camera);
+    this.electricFenceFX.update(gameplayDelta, this.player.position);
     this.collision.updateDebug(this.player);
 
     // 9. Debug Overlay
     this.debugOverlay.update();
 
     // 10. Render
-    this.renderPipeline.render(deltaTime, this.cameraController.target);
+    this.renderPipeline.render(realDeltaTime, this.cameraController.target);
   }
 }
 

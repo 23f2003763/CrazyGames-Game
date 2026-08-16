@@ -100,20 +100,38 @@ export class TutorialDirector {
       const emitterPos = campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -4.5));
       this.emitterMesh.position.copy(emitterPos);
       this.scene.add(this.emitterMesh);
+    }, undefined, () => {
+      // Fallback if model missing
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.8), new THREE.MeshStandardMaterial({color: 0x444444}));
+      box.position.copy(campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -4.5)));
+      box.position.y = 0.6;
+      this.emitterMesh = box;
+      this.scene.add(this.emitterMesh);
     });
 
-    // 2. Translucent moving scan wave (3.5m wide danger front)
-    const waveGeo = new THREE.PlaneGeometry(4.0, 0.6);
-    waveGeo.rotateX(-Math.PI / 2);
-    const waveMat = new THREE.MeshBasicMaterial({
-      color: 0xff3b30,
+    // 2. Vertical Laser Scanner (Calibration Sweeper)
+    this.scanWave = new THREE.Group();
+    
+    // Create 3 thin red/orange scanning laser lines
+    const lineMat = new THREE.MeshBasicMaterial({
+      color: 0xff4500,
       transparent: true,
-      opacity: 0.7,
-      side: THREE.DoubleSide
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending
     });
-    this.scanWave = new THREE.Mesh(waveGeo, waveMat);
+
+    const lineWidth = 3.5;
+    const lineHeight = 1.0;
+    
+    for (let i = 0; i < 3; i++) {
+      const lineGeo = new THREE.BoxGeometry(lineWidth, 0.02, 0.02);
+      const lineMesh = new THREE.Mesh(lineGeo, lineMat);
+      // Position them vertically between y=0.3 and y=1.2 (Ryder torso height)
+      lineMesh.position.y = 0.4 + (i * 0.35);
+      this.scanWave.add(lineMesh);
+    }
+
     this.scanWave.position.copy(campaignFrame.getAnchorWorld('tutorial_pulse_3'));
-    this.scanWave.position.y = 0.08;
     this.scene.add(this.scanWave);
 
     this.startScanPos = campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -3.0));
@@ -171,7 +189,6 @@ export class TutorialDirector {
       const t = (Math.sin(this.waveProgress * Math.PI * 2) + 1.0) * 0.5;
       if (this.scanWave) {
         this.scanWave.position.lerpVectors(this.startScanPos, this.endScanPos, t);
-        this.scanWave.position.y = 0.08;
       }
 
       // Complete step 2 when player executes a dodge roll

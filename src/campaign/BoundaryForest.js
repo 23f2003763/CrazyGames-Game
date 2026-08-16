@@ -14,6 +14,7 @@ export class BoundaryForest {
     this.scene.add(this.group);
 
     this.treeModels = [];
+    this.bushModels = [];
     this.loadAndGenerate();
   }
 
@@ -21,11 +22,19 @@ export class BoundaryForest {
     const loader = new GLTFLoader();
     loader.load('/models/world/tree_set.glb', (gltf) => {
       const treeNames = ['Pine_A', 'Pine_B', 'Pine_C', 'Broadleaf_A', 'Broadleaf_B', 'DeadTree_A'];
+      const bushNames = ['Bush_A', 'Bush_B', 'Shrub_A'];
       gltf.scene.traverse((child) => {
         if (treeNames.includes(child.name)) {
           this.treeModels.push(child);
         }
+        if (bushNames.includes(child.name)) {
+          this.bushModels.push(child);
+        }
       });
+
+      if (this.bushModels.length === 0 && this.treeModels.length > 0) {
+        this.bushModels = this.treeModels;
+      }
 
       if (this.treeModels.length > 0) {
         this.generateForest();
@@ -34,7 +43,7 @@ export class BoundaryForest {
   }
 
   generateForest() {
-    const depthBands = [24.0, 28.5, 35.0, 43.5, 54.0]; // Outside the 20.5m fence
+    const depthBands = [20.0, 23.5, 28.0, 34.0, 42.0]; // Outside the 18.0m fence
     const totalPathLen = campaignPath.totalLength;
     const stepCount = Math.floor(totalPathLen / 4.2);
 
@@ -58,14 +67,28 @@ export class BoundaryForest {
         const leftPos = centerPos.clone()
           .addScaledVector(normal, -(bandOffset + jitterN))
           .addScaledVector(tangent, jitterT);
-        this.spawnTree(leftPos, pseudoRand);
+        this.spawnTree(leftPos, pseudoRand, this.treeModels);
 
         // Right forest band
         const rightPos = centerPos.clone()
           .addScaledVector(normal, (bandOffset + jitterN))
           .addScaledVector(tangent, jitterT);
-        this.spawnTree(rightPos, pseudoRand);
+        this.spawnTree(rightPos, pseudoRand, this.treeModels);
       });
+
+      // Shrub band at 19.0m (dense)
+      const shrubT = (pseudoRand() - 0.5) * 1.5;
+      const shrubN = (pseudoRand() - 0.5) * 0.8;
+      
+      const leftShrubPos = centerPos.clone()
+        .addScaledVector(normal, -(19.0 + shrubN))
+        .addScaledVector(tangent, shrubT);
+      this.spawnTree(leftShrubPos, pseudoRand, this.bushModels, 0.6);
+
+      const rightShrubPos = centerPos.clone()
+        .addScaledVector(normal, (19.0 + shrubN))
+        .addScaledVector(tangent, shrubT);
+      this.spawnTree(rightShrubPos, pseudoRand, this.bushModels, 0.6);
     }
 
     // South perimeter dense back woods
@@ -78,20 +101,20 @@ export class BoundaryForest {
         const p = startCenter.clone()
           .addScaledVector(startNormal, d + (pseudoRand() - 0.5) * 2.0)
           .addScaledVector(startTangent, -back + (pseudoRand() - 0.5) * 2.0);
-        this.spawnTree(p, pseudoRand);
+        this.spawnTree(p, pseudoRand, this.treeModels);
       }
     }
   }
 
-  spawnTree(worldPos, randFn) {
-    const modelIdx = Math.floor(randFn() * this.treeModels.length);
-    const baseModel = this.treeModels[modelIdx];
+  spawnTree(worldPos, randFn, modelArray = this.treeModels, scaleMulti = 1.0) {
+    const modelIdx = Math.floor(randFn() * modelArray.length);
+    const baseModel = modelArray[modelIdx];
     if (!baseModel) return;
 
     const tree = baseModel.clone(true);
     tree.position.copy(worldPos);
 
-    const scale = 0.85 + randFn() * 0.45;
+    const scale = (0.85 + randFn() * 0.45) * scaleMulti;
     tree.scale.setScalar(scale);
     tree.rotation.y = randFn() * Math.PI * 2;
 

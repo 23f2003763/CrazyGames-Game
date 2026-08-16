@@ -38,7 +38,7 @@ export class RenderPipeline {
 
     // 2. ACES Filmic Tone Mapping with high daytime readability
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.25;
+    this.renderer.toneMappingExposure = 1.35;
 
     // 3. High-Fidelity Soft Shadows
     this.renderer.shadowMap.enabled = true;
@@ -48,20 +48,20 @@ export class RenderPipeline {
   }
 
   initAtmosphere() {
-    const skyColor = new THREE.Color(0xa2c4b8);
+    const skyColor = new THREE.Color(0xb5bfa1); // Warmer overcast sky
     this.scene.background = skyColor;
-    this.scene.fog = new THREE.FogExp2(0xa2c4b8, 0.0028);
+    this.scene.fog = new THREE.FogExp2(0xb5bfa1, 0.0028);
   }
 
   initLighting() {
     // 1. Hemisphere Light: Sky daylight + Ground warm earthy bounce
-    const hemiLight = new THREE.HemisphereLight(0xc2e2f8, 0x4a5240, 1.05);
+    const hemiLight = new THREE.HemisphereLight(0xd4d8c5, 0x5a4a3a, 1.15); // warmer golden, ground warm brown
     hemiLight.position.set(0, 90, 0);
     this.scene.add(hemiLight);
     this.hemiLight = hemiLight;
 
     // 2. Main Directional Sunlight: Crisp warm sun
-    const sunLight = new THREE.DirectionalLight(0xfff4dc, 1.50);
+    const sunLight = new THREE.DirectionalLight(0xffeed6, 1.60); // slightly warm white, soft shadows
     sunLight.position.set(-60, 90, 60);
     sunLight.castShadow = true;
 
