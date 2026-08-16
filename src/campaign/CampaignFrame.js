@@ -35,12 +35,14 @@ export class CampaignFrame {
       ['target_coil_3', new THREE.Vector3( 3.5, 0.0, 14.0)],
       
       // Relay Settlement Hub
-      ['mara_hub', new THREE.Vector3(-3.5, 0.0, 22.0)],
-      ['signal_console', new THREE.Vector3(3.8, 0.0, 24.0)],
-      ['relay_mast', new THREE.Vector3(7.5, 0.0, 24.0)],
-      ['relay_gate', new THREE.Vector3(0.0, 0.0, 36.0)],
-      ['relay_console_camera', new THREE.Vector3(2.5, 2.0, 22.0)],
-      ['relay_gate_camera', new THREE.Vector3(0.0, 3.0, 32.0)],
+      ['relay_hq', new THREE.Vector3(0.0, 0.0, 18.0)],
+      ['mara_hub', new THREE.Vector3(-1.2, 0.38, 17.0)],
+      ['signal_console', new THREE.Vector3(-3.0, 0.38, 15.6)],
+      ['relay_mast', new THREE.Vector3(-5.0, 0.0, 14.8)],
+      ['relay_gate', new THREE.Vector3(0.0, 0.0, 30.0)],
+      ['gate_position', new THREE.Vector3(0.0, 0.0, 30.0)],
+      ['relay_console_camera', new THREE.Vector3(-3.0, 2.5, 17.5)],
+      ['relay_gate_camera', new THREE.Vector3(0.0, 3.0, 26.0)],
       
       // Forest Corridor & Encounters
       ['salvage_cache_1', new THREE.Vector3(14.0, 0.0, 65.0)],
@@ -53,9 +55,10 @@ export class CampaignFrame {
       ['scarab_spawn_5', new THREE.Vector3(5.0, 0.0, 108.0)],
 
       // Level 1 Endpoint: Communications Repeater Site
-      ['repeater_outpost', new THREE.Vector3(0.0, 0.0, 135.0)],
-      ['signal_repeater_console', new THREE.Vector3(0.0, 0.0, 138.0)],
-      ['repeater_camera', new THREE.Vector3(0.0, 2.5, 134.0)],
+      ['repeater_site', new THREE.Vector3(0.0, 0.0, 145.0)],
+      ['repeater_outpost', new THREE.Vector3(0.0, 0.0, 145.0)],
+      ['signal_repeater_console', new THREE.Vector3(-1.7, 0.35, 144.6)],
+      ['repeater_camera', new THREE.Vector3(0.0, 2.5, 141.0)],
       ['distant_spire_poi', new THREE.Vector3(0.0, 14.0, 210.0)]
     ]);
   }
