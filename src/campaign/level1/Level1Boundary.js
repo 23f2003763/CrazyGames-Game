@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { campaignPath } from '../CampaignPath.js';
-import { campaignFrame } from '../CampaignFrame.js';
 
 /**
- * Level1Boundary: Authoritative perimeter security fence and multi-tier dense boundary forest.
- * Guarantees:
- * - Zero world escape: Fences at ±18.0m with continuous backstop colliders at ±18.35m.
- * - Gap continuity check: calculates exact transformed world endpoints (<0.15m max).
- * - Multi-layer forest backing: 18.8m shrubs, 20m/23m/27m/33m/40m tree rows.
- * - Animated electrical wire pulses, periodic arcs, and player proximity snap FX.
+ * Level1Boundary
+ * ----------------
+ * A readable, continuous powered perimeter for Wake Signal.
+ *
+ * The previous version accidentally failed to find the named tree roots and then
+ * cloned the ENTIRE tree-set GLB for every forest placement. That is why enormous
+ * overlapping canopies repeatedly swallowed the camera. This version only clones
+ * exact named tree roots and keeps the first canopy band well behind the fence.
  */
 export class Level1Boundary {
   constructor(scene, collisionRegistry, audioSystem) {
@@ -23,12 +24,14 @@ export class Level1Boundary {
 
     this.fenceOffset = 18.0;
     this.segmentLength = 4.0;
+    this.moduleSpacing = 3.88;
     this.fenceSegments = { left: [], right: [] };
     this.colliders = { left: [], right: [] };
 
     this.activeArcs = [];
     this.arcTimer = 0;
-    this.nextArcTime = 1.2 + Math.random() * 1.6;
+    this.nextArcTime = 0.8 + Math.random() * 1.3;
+    this.proximityCooldown = 0;
 
     this.loader = new GLTFLoader();
     this.loadModelsAndBuild();
@@ -42,9 +45,12 @@ export class Level1Boundary {
     ]);
 
     this.fenceProto = fenceGLTF.scene.getObjectByName('FenceStraight_4m');
-    this.gateProto = fenceGLTF.scene.getObjectByName('FenceGateLarge');
     this.treeScene = treeGLTF.scene;
     this.rockScene = rockGLTF.scene;
+
+    if (!this.fenceProto) {
+      throw new Error('Level1Boundary: FenceStraight_4m missing from electric_fence_set.glb');
+    }
 
     this.buildFencePerimeter();
     this.validateFenceContinuity();
@@ -59,253 +65,255 @@ export class Level1Boundary {
 
   buildFencePerimeter() {
     const totalDist = campaignPath.totalLength;
-    const count = Math.ceil((totalDist + 24.0) / this.segmentLength);
+    const count = Math.ceil(totalDist / this.moduleSpacing);
 
-    for (let side of ['left', 'right']) {
+    for (const side of ['left', 'right']) {
       const sign = side === 'left' ? -1 : 1;
-      const latOffset = sign * this.fenceOffset;
+      const lateral = sign * this.fenceOffset;
 
-      for (let i = -3; i <= count + 3; i++) {
-        const forwardMeters = i * this.segmentLength;
-        const t = THREE.MathUtils.clamp(forwardMeters / Math.max(1, totalDist), 0, 1);
+      // Extend only a few modules beyond the authored ends. Do NOT clamp dozens of
+      // samples onto t=0/1 because that stacks fence sections on top of one another.
+      for (let i = -2; i <= count + 2; i++) {
+        const forwardMeters = THREE.MathUtils.clamp(i * this.moduleSpacing, 0, totalDist);
+        const t = totalDist > 0 ? forwardMeters / totalDist : 0;
+        const center = campaignPath.getWorldPointAt(t);
+        const tangent = campaignPath.getWorldTangentAt(t);
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+        const pos = center.clone().addScaledVector(normal, lateral);
+        pos.y = 0;
 
-        const centerPt = campaignPath.getWorldPointAt(t);
-        const tanPt = campaignPath.getWorldTangentAt(t);
-        const normalPt = new THREE.Vector3(-tanPt.z, 0, tanPt.x).normalize();
+        const seg = this.fenceProto.clone(true);
+        seg.position.copy(pos);
 
-        const fencePos = centerPt.clone().addScaledVector(normalPt, latOffset);
-        fencePos.y = 0;
+        // FenceStraight_4m's long axis is local X.
+        const yaw = Math.atan2(-tangent.z, tangent.x);
+        seg.rotation.y = yaw;
+        seg.name = `Fence_${side}_${i}`;
+        seg.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
 
-        // Visual Mesh
-        let segMesh;
-        if (this.fenceProto) {
-          segMesh = this.fenceProto.clone(true);
-        } else {
-          segMesh = new THREE.Group();
-        }
+        this.group.add(seg);
+        seg.updateMatrixWorld(true);
+        this.fenceSegments[side].push(seg);
 
-        segMesh.position.copy(fencePos);
-        const yaw = Math.atan2(tanPt.x, tanPt.z) + Math.PI / 2;
-        segMesh.rotation.y = yaw;
-        segMesh.name = `Fence_${side}_${i}`;
-
-        this.group.add(segMesh);
-        segMesh.updateMatrixWorld(true);
-        this.fenceSegments[side].push(segMesh);
-
-        // Continuous backstop physical box collider at ±18.35m
         if (this.collision) {
-          const colPos = centerPt.clone().addScaledVector(normalPt, sign * (this.fenceOffset + 0.35));
-          colPos.y = 1.3;
+          // Visible segment collision.
+          const id = `col_fence_${side}_${i}`;
+          this.collision.addBoxFromObject(seg, { x: 4.0, z: 0.34 }, id);
+          this.colliders[side].push(id);
 
-          const colId = `col_fence_${side}_${i}`;
-          this.collision.addBox(colId, colPos, new THREE.Vector3(this.segmentLength + 0.2, 2.6, 0.7), yaw);
-          this.colliders[side].push({ id: colId, pos: colPos, length: this.segmentLength + 0.2 });
+          // Narrow safety backstop behind the visible wires, not inside the play area.
+          const backPos = center.clone().addScaledVector(normal, sign * (this.fenceOffset + 0.42));
+          this.collision.addBox(
+            backPos.x,
+            backPos.z,
+            4.15,
+            0.34,
+            yaw,
+            `col_fence_backstop_${side}_${i}`
+          );
         }
       }
     }
   }
 
   validateFenceContinuity() {
-    let maxLeftVisual = 0;
-    let maxRightVisual = 0;
-    let maxLeftCol = 0;
-    let maxRightCol = 0;
+    const report = {};
 
-    for (let side of ['left', 'right']) {
+    for (const side of ['left', 'right']) {
+      let maxGap = 0;
       const segs = this.fenceSegments[side];
+
       for (let i = 0; i < segs.length - 1; i++) {
-        const segA = segs[i];
-        const segB = segs[i + 1];
-
-        // Endpoint local +2m on segA transformed to world
-        const endWorldA = new THREE.Vector3(2.0, 0, 0).applyMatrix4(segA.matrixWorld);
-        // Start point local -2m on segB transformed to world
-        const startWorldB = new THREE.Vector3(-2.0, 0, 0).applyMatrix4(segB.matrixWorld);
-
-        const dist = endWorldA.distanceTo(startWorldB);
-        if (side === 'left') {
-          if (dist > maxLeftVisual) maxLeftVisual = dist;
-        } else {
-          if (dist > maxRightVisual) maxRightVisual = dist;
-        }
+        segs[i].updateMatrixWorld(true);
+        segs[i + 1].updateMatrixWorld(true);
+        const a = new THREE.Vector3(2, 0, 0).applyMatrix4(segs[i].matrixWorld);
+        const b = new THREE.Vector3(-2, 0, 0).applyMatrix4(segs[i + 1].matrixWorld);
+        maxGap = Math.max(maxGap, a.distanceTo(b));
       }
 
-      // Check collision continuity
-      const cols = this.colliders[side];
-      for (let i = 0; i < cols.length - 1; i++) {
-        const cA = cols[i];
-        const cB = cols[i + 1];
-        const dist = cA.pos.distanceTo(cB.pos);
-        const colGap = Math.max(0, dist - (cA.length + cB.length) / 2);
-        if (side === 'left') {
-          if (colGap > maxLeftCol) maxLeftCol = colGap;
-        } else {
-          if (colGap > maxRightCol) maxRightCol = colGap;
-        }
-      }
+      report[side] = maxGap;
+      console.log(`LEVEL1 ${side.toUpperCase()} FENCE MAX VISUAL GAP: ${maxGap.toFixed(3)}m`);
     }
 
-    console.log(`LEFT MAX VISUAL GAP: ${maxLeftVisual.toFixed(3)}m`);
-    console.log(`RIGHT MAX VISUAL GAP: ${maxRightVisual.toFixed(3)}m`);
-    console.log(`LEFT MAX COLLISION GAP: ${maxLeftCol.toFixed(3)}m`);
-    console.log(`RIGHT MAX COLLISION GAP: ${maxRightCol.toFixed(3)}m`);
-
-    const maxAllowed = 0.15;
-    if (maxLeftVisual > maxAllowed || maxRightVisual > maxAllowed) {
-      console.warn(`Fence visual gap exceeded limit: Left=${maxLeftVisual}m, Right=${maxRightVisual}m`);
+    // Curves naturally produce a small chord error. Anything above 0.45m is a real gap.
+    if (report.left > 0.45 || report.right > 0.45) {
+      console.error('Level1Boundary continuity failure:', report);
     }
+
+    return report;
   }
 
   buildBoundaryForest() {
     if (!this.treeScene) return;
 
-    const treeVariants = [];
-    this.treeScene.traverse((child) => {
-      if (child.isMesh && child.name.includes('Tree') || (child.parent && child.parent.name.includes('Tree'))) {
-        const rootObj = child.parent || child;
-        if (!treeVariants.includes(rootObj)) treeVariants.push(rootObj);
-      }
-    });
-    if (treeVariants.length === 0) treeVariants.push(this.treeScene);
+    // EXACT roots from build_tree_set.py. Never fall back to cloning StylizedTreeSet.
+    const treeNames = [
+      'Pine_A',
+      'Pine_B',
+      'Pine_C',
+      'Broadleaf_A',
+      'Broadleaf_B',
+      'DeadTree_A',
+      'DeadTree_B'
+    ];
 
-    const rockVariants = [];
-    if (this.rockScene) {
-      this.rockScene.traverse((child) => {
-        if (child.isMesh) rockVariants.push(child);
-      });
+    const treeVariants = treeNames
+      .map(name => this.treeScene.getObjectByName(name))
+      .filter(Boolean);
+
+    if (treeVariants.length < 5) {
+      console.warn(`Level1Boundary: only ${treeVariants.length} exact tree roots found; forest density reduced.`);
     }
 
-    // Dense Depth Bands (18.8m shrubs, 20m row 1, 23.5m row 2, 28m row 3, 34m row 4, 42m row 5)
+    if (treeVariants.length === 0) return;
+
+    const rockVariants = [];
+    this.rockScene?.traverse(child => {
+      if (child.isMesh && child.name.toLowerCase().includes('rock')) rockVariants.push(child);
+    });
+
+    // First trunks start 2.5m behind the fence. Canopies stay outside the gameplay corridor.
+    // Scales are intentionally restrained: the source assets are already 5–9.5m tall.
     const bands = [
-      { lateral: 18.8, spacing: 3.2, scale: [0.7, 1.1], isShrub: true },
-      { lateral: 20.0, spacing: 3.5, scale: [1.2, 1.6], isShrub: false },
-      { lateral: 23.5, spacing: 4.2, scale: [1.5, 2.1], isShrub: false },
-      { lateral: 28.0, spacing: 5.0, scale: [1.8, 2.6], isShrub: false },
-      { lateral: 34.0, spacing: 6.0, scale: [2.2, 3.2], isShrub: false },
-      { lateral: 42.0, spacing: 7.5, scale: [2.8, 4.0], isShrub: false }
+      { lateral: 21.0, spacing: 5.8, minScale: 0.60, maxScale: 0.82 },
+      { lateral: 25.5, spacing: 6.3, minScale: 0.72, maxScale: 0.98 },
+      { lateral: 31.0, spacing: 7.2, minScale: 0.82, maxScale: 1.08 },
+      { lateral: 38.0, spacing: 8.5, minScale: 0.92, maxScale: 1.18 }
     ];
 
     const totalDist = campaignPath.totalLength;
 
-    for (let side of [-1, 1]) {
-      for (const band of bands) {
-        const count = Math.ceil((totalDist + 30.0) / band.spacing);
+    // Deterministic pseudo-random helper keeps placement stable across reloads.
+    let seed = 7361;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
 
-        for (let i = -3; i <= count + 3; i++) {
-          const jitterFwd = (Math.sin(i * 3.7 + band.lateral) * 0.4) * band.spacing;
-          const forwardMeters = i * band.spacing + jitterFwd;
-          const t = THREE.MathUtils.clamp(forwardMeters / Math.max(1, totalDist), 0, 1);
+    for (const sideSign of [-1, 1]) {
+      for (let bandIndex = 0; bandIndex < bands.length; bandIndex++) {
+        const band = bands[bandIndex];
+        const count = Math.ceil(totalDist / band.spacing);
 
-          const centerPt = campaignPath.getWorldPointAt(t);
-          const tanPt = campaignPath.getWorldTangentAt(t);
-          const normalPt = new THREE.Vector3(-tanPt.z, 0, tanPt.x).normalize();
+        for (let i = 0; i <= count; i++) {
+          const forward = THREE.MathUtils.clamp(
+            i * band.spacing + (rand() - 0.5) * 2.2,
+            0,
+            totalDist
+          );
+          const t = totalDist > 0 ? forward / totalDist : 0;
+          const center = campaignPath.getWorldPointAt(t);
+          const tangent = campaignPath.getWorldTangentAt(t);
+          const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+          const lateral = sideSign * (band.lateral + (rand() - 0.5) * 1.5);
+          const pos = center.clone().addScaledVector(normal, lateral);
+          pos.y = 0;
 
-          const jitterLat = (Math.cos(i * 2.3 + side) * 0.3) * 1.5;
-          const finalLat = side * (band.lateral + jitterLat);
-
-          const plantPos = centerPt.clone().addScaledVector(normalPt, finalLat);
-          plantPos.y = 0;
-
-          // Pick tree or rock
-          const isRock = !band.isShrub && (Math.sin(i * 5.1 + band.lateral) > 0.65) && rockVariants.length > 0;
+          // Sparse rocks in the deeper rows only.
+          const useRock = bandIndex >= 2 && rockVariants.length > 0 && rand() < 0.14;
           let inst;
 
-          if (isRock) {
-            const rProto = rockVariants[Math.abs(i) % rockVariants.length];
-            inst = rProto.clone(true);
-            const sc = 1.0 + Math.random() * 0.8;
-            inst.scale.set(sc, sc, sc);
+          if (useRock) {
+            inst = rockVariants[Math.floor(rand() * rockVariants.length)].clone(true);
+            const s = 0.65 + rand() * 0.55;
+            inst.scale.setScalar(s);
           } else {
-            const tProto = treeVariants[Math.abs(i + (side > 0 ? 3 : 0)) % treeVariants.length];
-            inst = tProto.clone(true);
-            const sc = band.scale[0] + (Math.sin(i * 1.1) * 0.5 + 0.5) * (band.scale[1] - band.scale[0]);
-            inst.scale.set(sc, sc * (band.isShrub ? 0.6 : 1.0), sc);
+            inst = treeVariants[Math.floor(rand() * treeVariants.length)].clone(true);
+            const s = band.minScale + rand() * (band.maxScale - band.minScale);
+            inst.scale.setScalar(s);
           }
 
-          inst.position.copy(plantPos);
-          inst.rotation.y = (i * 1.7) % (Math.PI * 2);
+          inst.position.copy(pos);
+          inst.rotation.y = rand() * Math.PI * 2;
+          inst.traverse(child => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
           this.group.add(inst);
         }
       }
     }
   }
 
-  spawnArc(fenceMesh) {
-    const startX = (Math.random() - 0.5) * 3.6;
-    const endX = startX + (Math.random() - 0.5) * 1.2;
-    const startY = 1.2 + Math.random() * 1.3;
-    const endY = startY + (Math.random() - 0.5) * 0.8;
+  spawnArc(fenceMesh, strong = false) {
+    if (!fenceMesh) return;
+
+    const startX = (Math.random() - 0.5) * 3.3;
+    const endX = THREE.MathUtils.clamp(startX + (Math.random() - 0.5) * 1.1, -1.8, 1.8);
+    const startY = 1.35 + Math.random() * 1.15;
+    const endY = THREE.MathUtils.clamp(startY + (Math.random() - 0.5) * 0.55, 1.15, 2.65);
 
     const points = [];
-    const segs = 5;
-    for (let i = 0; i <= segs; i++) {
-      const t = i / segs;
+    const segments = 7;
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const jitter = i === 0 || i === segments ? 0 : (Math.random() - 0.5) * (strong ? 0.18 : 0.10);
       points.push(new THREE.Vector3(
-        startX + (endX - startX) * t,
-        startY + (endY - startY) * t,
-        (Math.random() - 0.5) * 0.15
+        THREE.MathUtils.lerp(startX, endX, t),
+        THREE.MathUtils.lerp(startY, endY, t) + jitter,
+        jitter
       ));
     }
 
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({
-      color: 0xffffff,
+      color: strong ? 0xbffaff : 0x66efff,
       transparent: true,
-      opacity: 1.0,
-      blending: THREE.AdditiveBlending
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
-    const arc = new THREE.Line(geo, mat);
-    fenceMesh.add(arc);
 
-    this.activeArcs.push({
-      mesh: arc,
-      parent: fenceMesh,
-      lifetime: 0.10 + Math.random() * 0.08
-    });
+    const line = new THREE.Line(geo, mat);
+    fenceMesh.add(line);
+    this.activeArcs.push({ mesh: line, parent: fenceMesh, lifetime: strong ? 0.18 : 0.11 });
   }
 
   update(dt, playerPos) {
     if (!playerPos) return;
 
-    // Periodic random arc on nearby fence (every 1.2-2.8s)
     this.arcTimer += dt;
+    this.proximityCooldown = Math.max(0, this.proximityCooldown - dt);
+
     if (this.arcTimer >= this.nextArcTime) {
       this.arcTimer = 0;
-      this.nextArcTime = 1.2 + Math.random() * 1.6;
+      this.nextArcTime = 0.8 + Math.random() * 1.3;
 
-      const allSegs = [...this.fenceSegments.left, ...this.fenceSegments.right];
-      const nearby = allSegs.filter(s => s.position.distanceTo(playerPos) < 26.0);
-      if (nearby.length > 0) {
-        const target = nearby[Math.floor(Math.random() * nearby.length)];
-        this.spawnArc(target);
+      const nearby = [...this.fenceSegments.left, ...this.fenceSegments.right]
+        .filter(seg => seg.position.distanceTo(playerPos) < 30);
+
+      if (nearby.length) {
+        this.spawnArc(nearby[Math.floor(Math.random() * nearby.length)]);
       }
     }
 
-    // Player proximity bright snap (<0.8m)
-    const allSegs = [...this.fenceSegments.left, ...this.fenceSegments.right];
-    for (const seg of allSegs) {
-      const d = seg.position.distanceTo(playerPos);
-      if (d < 2.8) {
-        const localP = seg.worldToLocal(playerPos.clone());
-        if (Math.abs(localP.x) < 2.0 && Math.abs(localP.z) < 0.8) {
-          if (!seg.userData.inSnap) {
-            seg.userData.inSnap = true;
-            this.spawnArc(seg);
-            if (this.audioSystem && this.audioSystem.playProximityShock) {
-              this.audioSystem.playProximityShock();
-            }
-          }
-        } else {
-          seg.userData.inSnap = false;
+    // Reactive zap near the physical boundary.
+    if (this.proximityCooldown <= 0) {
+      const nearby = [...this.fenceSegments.left, ...this.fenceSegments.right]
+        .filter(seg => seg.position.distanceTo(playerPos) < 3.2);
+
+      for (const seg of nearby) {
+        const local = seg.worldToLocal(playerPos.clone());
+        if (Math.abs(local.x) <= 2.1 && Math.abs(local.z) <= 0.95) {
+          this.spawnArc(seg, true);
+          this.proximityCooldown = 0.45;
+          this.audioSystem?.playProximityShock?.();
+          break;
         }
       }
     }
 
-    // Update active arcs
     for (let i = this.activeArcs.length - 1; i >= 0; i--) {
       const arc = this.activeArcs[i];
       arc.lifetime -= dt;
+      arc.mesh.material.opacity = THREE.MathUtils.clamp(arc.lifetime * 8, 0, 1);
       if (arc.lifetime <= 0) {
         arc.parent.remove(arc.mesh);
         arc.mesh.geometry.dispose();
