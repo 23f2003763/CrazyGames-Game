@@ -277,7 +277,9 @@ class GameApp {
       this.movementFX.emitDust(this.player.position.x, this.player.position.z, 1.5, 2);
     }
     this.movementFX.update(gameplayDelta, this.cameraController.camera);
-    this.electricFenceFX.update(gameplayDelta, this.player.position);
+    if (this.electricFenceFX) {
+      this.electricFenceFX.update(gameplayDelta, this.player.position);
+    }
     this.collision.updateDebug(this.player);
 
     // 9. Debug Overlay
