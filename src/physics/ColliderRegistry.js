@@ -1,8 +1,15 @@
 import * as THREE from 'three';
 
 /**
- * ColliderRegistry: High-performance swept collision system with natural wall sliding,
- * substepping, and direct Three.js Object3D matrix binding.
+ * ColliderRegistry: lightweight XZ collision registry with swept/sub-stepped movement.
+ *
+ * IMPORTANT: addBox supports BOTH call styles used across the project:
+ *   addBox(x, z, width, depth, rotation?, id?)
+ *   addBox(id, positionVector3, sizeVector3, rotation?)
+ *
+ * This compatibility matters because the authored Level 1 V2 systems use the second
+ * style while older systems use the first. Previously the V2 calls were being parsed
+ * as strings/vectors in numeric fields, which effectively disabled most collisions.
  */
 export class ColliderRegistry {
   constructor(scene) {
@@ -12,7 +19,7 @@ export class ColliderRegistry {
     this.debugMode = false;
     this.debugMeshes = [];
     this.playerDebugMesh = null;
-    this.collisionEnabled = true; // For F4 diagnostic toggle
+    this.collisionEnabled = true;
   }
 
   addCircle(x, z, radius, id = null) {
@@ -23,8 +30,43 @@ export class ColliderRegistry {
     return colliderId;
   }
 
-  addBox(x, z, width, depth, rotation = 0, id = null) {
-    const colliderId = id || `box_${this.colliders.length}`;
+  addBox(a, b, c, d = 0, e = 0, f = null) {
+    let x;
+    let z;
+    let width;
+    let depth;
+    let rotation;
+    let colliderId;
+
+    // Authored-object style: addBox(id, Vector3 position, Vector3 size, rotation)
+    if (typeof a === 'string' && b && b.isVector3 && c && c.isVector3) {
+      colliderId = a;
+      x = b.x;
+      z = b.z;
+      width = Math.max(0.001, Math.abs(c.x));
+      depth = Math.max(0.001, Math.abs(c.z));
+      rotation = Number.isFinite(d) ? d : 0;
+    } else {
+      // Legacy/numeric style: addBox(x, z, width, depth, rotation?, id?)
+      x = Number(a);
+      z = Number(b);
+      width = Math.max(0.001, Math.abs(Number(c)));
+      depth = Math.max(0.001, Math.abs(Number(d)));
+      rotation = Number.isFinite(e) ? e : 0;
+      colliderId = f || `box_${this.colliders.length}`;
+    }
+
+    if (![x, z, width, depth, rotation].every(Number.isFinite)) {
+      console.error('[ColliderRegistry] Refused invalid box collider:', { a, b, c, d, e, f });
+      return null;
+    }
+
+    // Re-registering the same authored id should replace the stale copy rather than
+    // silently stacking duplicate blockers.
+    if (this.collidersById.has(colliderId)) {
+      this.remove(colliderId);
+    }
+
     const col = {
       type: 'box',
       id: colliderId,
@@ -34,6 +76,7 @@ export class ColliderRegistry {
       depth,
       rotation
     };
+
     this.colliders.push(col);
     this.collidersById.set(colliderId, col);
     return colliderId;
@@ -49,8 +92,8 @@ export class ColliderRegistry {
     object3D.matrixWorld.decompose(worldPos, worldQuat, worldScale);
     euler.setFromQuaternion(worldQuat, 'YXZ');
 
-    const width = (localSize.x || 1.0) * worldScale.x;
-    const depth = (localSize.z || localSize.y || 1.0) * worldScale.z;
+    const width = Math.abs((localSize.x || 1.0) * worldScale.x);
+    const depth = Math.abs((localSize.z || localSize.y || 1.0) * worldScale.z);
 
     return this.addBox(worldPos.x, worldPos.z, width, depth, euler.y, id || object3D.name);
   }
@@ -63,40 +106,43 @@ export class ColliderRegistry {
     if (!this.collidersById.has(id)) return;
     this.collidersById.delete(id);
     this.colliders = this.colliders.filter(c => c.id !== id);
-    if (this.debugMode) {
-      this.refreshDebugMeshes();
-    }
+    if (this.debugMode) this.refreshDebugMeshes();
   }
 
   buildFromRoots(roots) {
     if (!roots) return;
-    const vec = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    const euler = new THREE.Euler();
-    
+
     Object.values(roots).forEach(root => {
-      if (!root || !root.traverse) return;
+      if (!root?.traverse) return;
       root.updateMatrixWorld(true);
-      root.traverse((node) => {
-        if (node.name && node.name.startsWith('COL_BOX_')) {
-          node.matrixWorld.decompose(vec, quat, scale);
+
+      root.traverse(node => {
+        if (!node.name) return;
+
+        if (node.name.startsWith('COL_BOX_') || node.name.startsWith('COL_WALL_') || node.name.startsWith('COL_PROP_')) {
+          const pos = new THREE.Vector3();
+          const quat = new THREE.Quaternion();
+          const scale = new THREE.Vector3();
+          const euler = new THREE.Euler();
+          node.matrixWorld.decompose(pos, quat, scale);
           euler.setFromQuaternion(quat, 'YXZ');
-          this.addBox(vec.x, vec.z, scale.x, scale.z, euler.y, node.name);
+
+          // Blender Empty scale is treated as the authored FULL XZ footprint.
+          this.addBox(pos.x, pos.z, Math.abs(scale.x), Math.abs(scale.z), euler.y, node.name);
           node.visible = false;
-        } else if (node.name && node.name.startsWith('COL_CIRCLE_')) {
-          node.matrixWorld.decompose(vec, quat, scale);
-          const radius = Math.max(scale.x, scale.z) / 2;
-          this.addCircle(vec.x, vec.z, radius, node.name);
+        } else if (node.name.startsWith('COL_CIRCLE_')) {
+          const pos = new THREE.Vector3();
+          const scale = new THREE.Vector3();
+          node.getWorldPosition(pos);
+          node.getWorldScale(scale);
+          const radius = Math.max(Math.abs(scale.x), Math.abs(scale.z)) * 0.5;
+          this.addCircle(pos.x, pos.z, radius, node.name);
           node.visible = false;
         }
       });
     });
   }
 
-  /**
-   * Swept & Substepped movement resolver for natural wall sliding.
-   */
   moveCharacter(position, displacement, radius = 0.40) {
     if (!this.collisionEnabled) {
       position.x += displacement.x;
@@ -106,11 +152,9 @@ export class ColliderRegistry {
 
     const startX = position.x;
     const startZ = position.z;
-
-    const maxStep = 0.10;
+    const maxStep = 0.08;
     const dist = Math.hypot(displacement.x, displacement.z);
     const steps = Math.max(1, Math.ceil(dist / maxStep));
-
     const stepX = displacement.x / steps;
     const stepZ = displacement.z / steps;
 
@@ -118,25 +162,26 @@ export class ColliderRegistry {
     let blockedZ = false;
 
     for (let s = 0; s < steps; s++) {
-      // 1. Move and resolve along X axis
+      const beforeX = position.x;
       position.x += stepX;
       const resX = this.resolveCollision(position.x, position.z, radius);
-      if (Math.abs(resX.x - position.x) > 0.0001) {
-        blockedX = true;
-        position.x = resX.x;
-      }
+      position.x = resX.x;
+      position.z = resX.z;
+      if (Math.abs(position.x - (beforeX + stepX)) > 0.0001) blockedX = true;
 
-      // 2. Move and resolve along Z axis
+      const beforeZ = position.z;
       position.z += stepZ;
       const resZ = this.resolveCollision(position.x, position.z, radius);
-      if (Math.abs(resZ.z - position.z) > 0.0001) {
-        blockedZ = true;
-        position.z = resZ.z;
-      }
+      position.x = resZ.x;
+      position.z = resZ.z;
+      if (Math.abs(position.z - (beforeZ + stepZ)) > 0.0001) blockedZ = true;
     }
 
-    const actualDisplacement = new THREE.Vector3(position.x - startX, 0, position.z - startZ);
-    return { blockedX, blockedZ, actualDisplacement };
+    return {
+      blockedX,
+      blockedZ,
+      actualDisplacement: new THREE.Vector3(position.x - startX, 0, position.z - startZ)
+    };
   }
 
   resolveCollision(x, z, radius) {
@@ -163,19 +208,15 @@ export class ColliderRegistry {
       } else if (c.type === 'box') {
         const cos = Math.cos(-c.rotation);
         const sin = Math.sin(-c.rotation);
-
         const dx = resolvedX - c.x;
         const dz = resolvedZ - c.z;
-
         const localX = cos * dx - sin * dz;
         const localZ = sin * dx + cos * dz;
+        const halfW = c.width * 0.5;
+        const halfD = c.depth * 0.5;
 
-        const halfW = c.width / 2;
-        const halfD = c.depth / 2;
-
-        const closestX = Math.max(-halfW, Math.min(halfW, localX));
-        const closestZ = Math.max(-halfD, Math.min(halfD, localZ));
-
+        const closestX = THREE.MathUtils.clamp(localX, -halfW, halfW);
+        const closestZ = THREE.MathUtils.clamp(localZ, -halfD, halfD);
         const diffX = localX - closestX;
         const diffZ = localZ - closestZ;
         const distSq = diffX * diffX + diffZ * diffZ;
@@ -192,16 +233,12 @@ export class ColliderRegistry {
           } else {
             const penX = halfW - Math.abs(localX) + radius;
             const penZ = halfD - Math.abs(localZ) + radius;
-            if (penX < penZ) {
-              pushX = (localX >= 0 ? 1 : -1) * penX;
-            } else {
-              pushZ = (localZ >= 0 ? 1 : -1) * penZ;
-            }
+            if (penX < penZ) pushX = (localX >= 0 ? 1 : -1) * penX;
+            else pushZ = (localZ >= 0 ? 1 : -1) * penZ;
           }
 
           const cosBack = Math.cos(c.rotation);
           const sinBack = Math.sin(c.rotation);
-
           resolvedX += cosBack * pushX - sinBack * pushZ;
           resolvedZ += sinBack * pushX + cosBack * pushZ;
         }
@@ -228,36 +265,37 @@ export class ColliderRegistry {
     this.debugMeshes.forEach(m => this.scene.remove(m));
     this.debugMeshes = [];
 
-    if (this.debugMode) {
-      const matBox = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
-        wireframe: true,
-        depthTest: false,
-        transparent: true,
-        opacity: 0.85
-      });
+    if (!this.debugMode) return;
 
-      this.colliders.forEach(c => {
-        if (c.type === 'box') {
-          const geo = new THREE.BoxGeometry(c.width, 2.2, c.depth);
-          const mesh = new THREE.Mesh(geo, matBox);
-          mesh.position.set(c.x, 1.1, c.z);
-          mesh.rotation.y = c.rotation || 0;
-          this.scene.add(mesh);
-          this.debugMeshes.push(mesh);
-        }
-      });
-    }
+    const matBox = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      wireframe: true,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.85
+    });
+
+    this.colliders.forEach(c => {
+      if (c.type !== 'box') return;
+      const geo = new THREE.BoxGeometry(c.width, 2.2, c.depth);
+      const mesh = new THREE.Mesh(geo, matBox);
+      mesh.position.set(c.x, 1.1, c.z);
+      mesh.rotation.y = c.rotation || 0;
+      this.scene.add(mesh);
+      this.debugMeshes.push(mesh);
+    });
   }
 
   updateDebug(player) {
     if (!this.debugMode || !player) return;
+
     if (!this.playerDebugMesh) {
       const geo = new THREE.CylinderGeometry(0.40, 0.40, 1.8, 16);
       const mat = new THREE.MeshBasicMaterial({ color: 0x30d158, wireframe: true, depthTest: false });
       this.playerDebugMesh = new THREE.Mesh(geo, mat);
       this.scene.add(this.playerDebugMesh);
     }
+
     this.playerDebugMesh.position.set(player.position.x, player.position.y + 0.9, player.position.z);
   }
 }
