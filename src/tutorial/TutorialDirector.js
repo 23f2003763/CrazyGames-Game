@@ -100,34 +100,29 @@ export class TutorialDirector {
       const emitterPos = campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -4.5));
       this.emitterMesh.position.copy(emitterPos);
       this.scene.add(this.emitterMesh);
-    }, undefined, () => {
-      // Fallback if model missing
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.8), new THREE.MeshStandardMaterial({color: 0x444444}));
-      box.position.copy(campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -4.5)));
-      box.position.y = 0.6;
-      this.emitterMesh = box;
-      this.scene.add(this.emitterMesh);
     });
 
     // 2. Vertical Laser Scanner (Calibration Sweeper)
     this.scanWave = new THREE.Group();
     
     // Create 3 thin red/orange scanning laser lines
-    const lineMat = new THREE.MeshBasicMaterial({
-      color: 0xff4500,
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xff3300,
       transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      linewidth: 2
     });
 
-    const lineWidth = 3.5;
-    const lineHeight = 1.0;
-    
+    const halfW = 1.75;
     for (let i = 0; i < 3; i++) {
-      const lineGeo = new THREE.BoxGeometry(lineWidth, 0.02, 0.02);
-      const lineMesh = new THREE.Mesh(lineGeo, lineMat);
-      // Position them vertically between y=0.3 and y=1.2 (Ryder torso height)
-      lineMesh.position.y = 0.4 + (i * 0.35);
+      const yOffset = 0.4 + (i * 0.35);
+      const points = [
+        new THREE.Vector3(-halfW, yOffset, 0),
+        new THREE.Vector3( halfW, yOffset, 0)
+      ];
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMesh = new THREE.Line(lineGeo, lineMat.clone());
       this.scanWave.add(lineMesh);
     }
 

@@ -13,6 +13,7 @@ import { ElectricFenceFX } from './vfx/ElectricFenceFX.js';
 import { inputRouter } from './input/InputRouter.js';
 import { campaignFrame } from './campaign/CampaignFrame.js';
 import { campaignPath } from './campaign/CampaignPath.js';
+import { Level1WorldV2 } from './campaign/level1/Level1WorldV2.js';
 import { CampaignWorld } from './campaign/CampaignWorld.js';
 import { CutsceneDirector } from './cinematics/CutsceneDirector.js';
 import { TutorialDirector } from './tutorial/TutorialDirector.js';
@@ -51,7 +52,7 @@ class GameApp {
       this.cameraController.camera
     );
 
-    // 4. Core Audio, Checkpoints, Dialogue & Interaction
+    // 4. Core Audio, Checkpoints, Dialogue, Interaction, NPCs, Loot
     this.audioSystem = new AudioSystem();
     this.checkpointSystem = new CheckpointSystem();
     this.dialogueUI = new DialogueUI();
@@ -69,20 +70,55 @@ class GameApp {
       (x, z) => this.world.sampleHeight(x, z)
     );
 
-    // 7. Campaign World (+Z screen-up corridor, continuous fence, boundary forest, Relay HQ)
-    this.world = new CampaignWorld(
-      this.scene,
-      this.collision,
-      this.interactionSystem, 
-      this.lootSystem, 
-      this.npcSystem,
-      this.cutsceneDirector
-    );
+    // 7. Combat System
+    this.combatSystem = new CombatSystem(this.scene, this.audioSystem);
+    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
+
+    // 8. Level 1 Active World (Level1WorldV2 default, ?legacyLevel=1 fallback)
+    const isLegacy = new URLSearchParams(window.location.search).has('legacyLevel');
+    if (isLegacy) {
+      console.log('Loading Legacy CampaignWorld...');
+      this.world = new CampaignWorld(
+        this.scene,
+        this.collision,
+        this.interactionSystem,
+        this.lootSystem,
+        this.npcSystem,
+        this.cutsceneDirector
+      );
+      this.enemySystem = new EnemySystem(
+        this.scene,
+        this.combatSystem,
+        this.lootSystem,
+        this.audioSystem,
+        this.dialogueUI,
+        this.cameraController,
+        this.missionSystem
+      );
+      this.missionSystem.setEnemySystem(this.enemySystem);
+    } else {
+      console.log('Loading Clean Level1WorldV2 (Authored Wake Signal)...');
+      this.world = new Level1WorldV2(
+        this.scene,
+        this.collision,
+        this.interactionSystem,
+        this.lootSystem,
+        this.npcSystem,
+        this.cutsceneDirector,
+        this.combatSystem,
+        this.audioSystem,
+        this.dialogueUI,
+        this.cameraController,
+        this.missionSystem
+      );
+      this.missionSystem.setEnemySystem(this.world.encounter);
+    }
+
     if (this.world.terrainMesh) {
       this.walkableSurfaceSystem.registerSurface(this.world.terrainMesh);
     }
 
-    // 8. Playable Hero (Ryder)
+    // 9. Playable Hero (Ryder)
     this.player = new Player(this.scene);
     this.playerController = new PlayerController(
       this.player, 
@@ -98,14 +134,12 @@ class GameApp {
     this.player.rotation.y = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
     this.cameraController.setPlayer(this.player);
 
-    // 9. Mission System & Guidance
-    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
+    // 10. Mission Guidance & HUD
     this.breadcrumbSystem = new ArcBreadcrumbSystem(this.scene);
     this.objectiveGuidance = new ObjectiveGuidance(this.scene, this.cameraController.camera);
     this.objectiveHUD = new ObjectiveHUD();
 
-    // 10. Combat, Stormcore Hammer & Machine Enemies
-    this.combatSystem = new CombatSystem(this.scene, this.audioSystem);
+    // 11. Stormcore Hammer Weapon System
     this.weaponSystem = new WeaponSystem(
       this.scene, 
       this.cameraController.camera, 
@@ -114,18 +148,8 @@ class GameApp {
       this.audioSystem, 
       this.combatSystem
     );
-    this.enemySystem = new EnemySystem(
-      this.scene, 
-      this.combatSystem, 
-      this.lootSystem, 
-      this.audioSystem,
-      this.dialogueUI,
-      this.cameraController,
-      this.missionSystem
-    );
-    this.missionSystem.setEnemySystem(this.enemySystem);
 
-    // 11. 2-Step Calibration Tutorial (Move -> Dodge)
+    // 12. 2-Step Calibration Tutorial (Move -> Dodge)
     this.tutorialDirector = new TutorialDirector(
       this.scene,
       this.player,
@@ -134,9 +158,8 @@ class GameApp {
       () => this.startMainCampaign()
     );
 
-    // 12. Visual FX & Particles
+    // 13. Visual FX & Particles
     this.movementFX = new MovementFX(this.scene);
-    this.electricFenceFX = new ElectricFenceFX(this.scene, this.audioSystem);
 
     // 13. Debug Overlay (F5) & Collision Wireframe Toggle (F7)
     this.debugOverlay = new CampaignDebugOverlay(
@@ -196,7 +219,8 @@ class GameApp {
     requestAnimationFrame(this.animate);
 
     const realDeltaTime = Math.min(this.clock.getDelta(), 0.1);
-    const isPaused = this.enemySystem && this.enemySystem.isTutorialPaused;
+    const encounterRef = this.world.encounter || this.enemySystem;
+    const isPaused = encounterRef && encounterRef.isTutorialPaused;
     const gameplayDelta = isPaused ? 0 : realDeltaTime;
 
     // 1. Cutscene Director (letterbox & camera control)
@@ -221,14 +245,16 @@ class GameApp {
       // 4. Camera Follow
       if (!isPaused) {
         this.cameraController.update(gameplayDelta);
-      } else {
-        this.enemySystem.updateCameraTutorial(realDeltaTime);
+      } else if (encounterRef && encounterRef.updateCameraTutorial) {
+        encounterRef.updateCameraTutorial(realDeltaTime);
       }
     }
 
     // 5. Combat & Machine Enemies Update
     this.combatSystem.update(gameplayDelta);
-    this.enemySystem.update(gameplayDelta, this.player.position);
+    if (this.enemySystem) {
+      this.enemySystem.update(gameplayDelta, this.player.position);
+    }
 
     // 6. 2-Step Tutorial Update
     if (!this.tutorialDirector.isCompleted) {
