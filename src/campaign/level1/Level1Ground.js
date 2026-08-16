@@ -6,14 +6,12 @@ import { GroundDetailSystem } from '../../rendering/GroundDetailSystem.js';
 import { proceduralTextures } from '../../rendering/ProceduralTextures.js';
 
 /**
- * Level1Ground: Authored multi-layer playable terrain for Level 1 (WAKE SIGNAL).
- * Features:
- * - Practically flat surface (base height 0, max noise ±0.06m).
- * - Multi-texture blended ground shader (mossy olive grass, khaki dry grass, warm brown soil, dark mud).
- * - Rich UV-mapped muddy service trail with wheel ruts, gravel shoulders, and wet soil.
- * - Organic puddles (rounded geometry with reflections, zero black rectangle decals).
- * - Authored foundation zones (Relay packed earth, combat disturbed soil, repeater scorched ground).
- * - Instanced ground scatter (small stones, grass tufts, dry weeds, twigs).
+ * Level1Ground: authored, nearly-flat playable surface for WAKE SIGNAL.
+ *
+ * The previous version deliberately raised terrain outside the fence by up to ~3m.
+ * That recreated exactly the climbable slopes/end-of-world problem we were trying to
+ * remove. Level 1 now stays flat; boundary depth comes from fence + forest + fog/art,
+ * never from a giant procedural hill.
  */
 export class Level1Ground {
   constructor(scene) {
@@ -34,21 +32,12 @@ export class Level1Ground {
   }
 
   sampleHeight(x, z) {
-    // Level 1 playable corridor is practically flat, slight micro-noise only
-    const worldP = new THREE.Vector3(x, 0, z);
-    const t = campaignPath.getClosestProgress(worldP);
-    const pathP = campaignPath.getWorldPointAt(t);
-    const distFromPath = Math.hypot(x - pathP.x, z - pathP.z);
-
-    // Micro noise in playable area
-    let h = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.04;
-
-    // Gentle rise beyond fence (18m) masked by forest
-    if (distFromPath > 18.0) {
-      const excess = distFromPath - 18.0;
-      h += Math.min(excess, 20.0) * 0.15;
-    }
-    return h;
+    // Intentionally near-flat. Small micro undulation keeps the ground from looking
+    // mathematically sterile without destabilising buildings/colliders or creating
+    // climbable terrain outside the electric perimeter.
+    const macro = Math.sin(x * 0.115) * Math.cos(z * 0.10) * 0.018;
+    const micro = Math.sin(x * 0.43 + z * 0.17) * Math.cos(z * 0.39) * 0.022;
+    return THREE.MathUtils.clamp(macro + micro, -0.045, 0.045);
   }
 
   buildTerrainPlane() {
@@ -58,39 +47,32 @@ export class Level1Ground {
 
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
-
-    const cLush = new THREE.Color(0.0, 0.0, 0.0); // R=0 means grass
-    const cTrailEarth = new THREE.Color(1.0, 0.0, 0.0); // R=1 means dirt
-    const tempCol = new THREE.Color();
+    const dirt = new THREE.Color(1, 0, 0);
+    const grass = new THREE.Color(0, 0, 0);
+    const temp = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
+      pos.setY(i, this.sampleHeight(x, z));
 
-      const h = this.sampleHeight(x, z);
-      pos.setY(i, h);
-
-      const worldP = new THREE.Vector3(x, 0, z);
-      const t = campaignPath.getClosestProgress(worldP);
+      const wp = new THREE.Vector3(x, 0, z);
+      const t = campaignPath.getClosestProgress(wp);
       const pathP = campaignPath.getWorldPointAt(t);
-      const distFromPath = Math.hypot(x - pathP.x, z - pathP.z);
+      const dist = Math.hypot(x - pathP.x, z - pathP.z);
 
-      if (distFromPath < 5.5) {
-        tempCol.copy(cTrailEarth);
-      } else {
-        tempCol.lerpColors(cTrailEarth, cLush, Math.min(1.0, (distFromPath - 5.5) / 14.0));
-      }
-
-      colors[i * 3]     = tempCol.r;
-      colors[i * 3 + 1] = tempCol.g;
-      colors[i * 3 + 2] = tempCol.b;
+      // Broad worn-soil influence around the trail rather than one binary green plane.
+      const grassAmount = THREE.MathUtils.smoothstep(dist, 5.0, 16.0);
+      temp.lerpColors(dirt, grass, grassAmount);
+      colors[i * 3] = temp.r;
+      colors[i * 3 + 1] = temp.g;
+      colors[i * 3 + 2] = temp.b;
     }
 
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
 
-    const mat = createCampaignGroundMaterial();
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(geo, createCampaignGroundMaterial());
     mesh.receiveShadow = true;
     mesh.name = 'Level1_Terrain_Mesh';
     mesh.userData.isWalkable = true;
@@ -99,8 +81,8 @@ export class Level1Ground {
   }
 
   buildMudTrail() {
-    const steps = 160;
-    const halfW = this.trailWidth / 2;
+    const steps = 190;
+    const halfW = this.trailWidth * 0.5;
     const fullHalfW = halfW + this.shoulderWidth;
 
     const positions = [];
@@ -108,36 +90,34 @@ export class Level1Ground {
     const indices = [];
     const uvs = [];
 
-    const cMudCenter = new THREE.Color(0x402b1a); // deep brown compacted mud
-    const cWetEarth = new THREE.Color(0x2a1c12);  // darker wet grooves
-    const cShoulder = new THREE.Color(0x615445);  // warm dry soil / gravel
+    // Brighter/more readable daylight palette than the old near-black mud.
+    const cMudCenter = new THREE.Color(0x6b4728);
+    const cWetEarth = new THREE.Color(0x46301e);
+    const cShoulder = new THREE.Color(0x877257);
 
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
-      const worldCenter = campaignPath.getWorldPointAt(t);
-      const worldTangent = campaignPath.getWorldTangentAt(t);
-      const worldNormal = new THREE.Vector3(-worldTangent.z, 0, worldTangent.x).normalize();
+      const center = campaignPath.getWorldPointAt(t);
+      const tangent = campaignPath.getWorldTangentAt(t);
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
-      const edgeJitterL = Math.sin(i * 1.7) * 0.3;
-      const edgeJitterR = Math.cos(i * 2.1) * 0.3;
+      const edgeJitterL = Math.sin(i * 1.37) * 0.18 + Math.sin(i * 0.31) * 0.12;
+      const edgeJitterR = Math.cos(i * 1.63) * 0.18 + Math.cos(i * 0.27) * 0.12;
 
-      const pLeftOut = worldCenter.clone().addScaledVector(worldNormal, -(fullHalfW + edgeJitterL));
-      const pLeftIn  = worldCenter.clone().addScaledVector(worldNormal, -(halfW + edgeJitterL));
-      const pCenter  = worldCenter.clone();
-      const pRightIn = worldCenter.clone().addScaledVector(worldNormal, (halfW + edgeJitterR));
-      const pRightOut= worldCenter.clone().addScaledVector(worldNormal, (fullHalfW + edgeJitterR));
+      const points = [
+        center.clone().addScaledVector(normal, -(fullHalfW + edgeJitterL)),
+        center.clone().addScaledVector(normal, -(halfW + edgeJitterL * 0.45)),
+        center.clone(),
+        center.clone().addScaledVector(normal, halfW + edgeJitterR * 0.45),
+        center.clone().addScaledVector(normal, fullHalfW + edgeJitterR)
+      ];
 
-      [pLeftOut, pLeftIn, pCenter, pRightIn, pRightOut].forEach(p => p.y = 0.025);
+      points.forEach(p => {
+        p.y = this.sampleHeight(p.x, p.z) + 0.018;
+      });
 
       const base = i * 5;
-      positions.push(
-        pLeftOut.x, pLeftOut.y, pLeftOut.z,
-        pLeftIn.x, pLeftIn.y, pLeftIn.z,
-        pCenter.x, pCenter.y, pCenter.z,
-        pRightIn.x, pRightIn.y, pRightIn.z,
-        pRightOut.x, pRightOut.y, pRightOut.z
-      );
-
+      positions.push(...points.flatMap(p => [p.x, p.y, p.z]));
       colors.push(
         cShoulder.r, cShoulder.g, cShoulder.b,
         cWetEarth.r, cWetEarth.g, cWetEarth.b,
@@ -146,24 +126,20 @@ export class Level1Ground {
         cShoulder.r, cShoulder.g, cShoulder.b
       );
 
-      const v = (t * campaignPath.totalLength) / 4.0;
-      uvs.push(
-        0.0, v,
-        0.2, v,
-        0.5, v,
-        0.8, v,
-        1.0, v
-      );
+      const v = (t * campaignPath.totalLength) / 3.25;
+      uvs.push(0, v, 0.2, v, 0.5, v, 0.8, v, 1, v);
 
       if (i < steps) {
-        indices.push(base, base + 5, base + 1);
-        indices.push(base + 1, base + 5, base + 6);
-        indices.push(base + 1, base + 6, base + 2);
-        indices.push(base + 2, base + 6, base + 7);
-        indices.push(base + 2, base + 7, base + 3);
-        indices.push(base + 3, base + 7, base + 8);
-        indices.push(base + 3, base + 8, base + 4);
-        indices.push(base + 4, base + 8, base + 9);
+        indices.push(
+          base, base + 5, base + 1,
+          base + 1, base + 5, base + 6,
+          base + 1, base + 6, base + 2,
+          base + 2, base + 6, base + 7,
+          base + 2, base + 7, base + 3,
+          base + 3, base + 7, base + 8,
+          base + 3, base + 8, base + 4,
+          base + 4, base + 8, base + 9
+        );
       }
     }
 
@@ -175,63 +151,98 @@ export class Level1Ground {
     geo.computeVertexNormals();
 
     const dirtMaps = proceduralTextures.getDirtTexture(256);
-    dirtMaps.diffuse.wrapS = THREE.RepeatWrapping;
-    dirtMaps.diffuse.wrapT = THREE.RepeatWrapping;
-    dirtMaps.roughness.wrapS = THREE.RepeatWrapping;
-    dirtMaps.roughness.wrapT = THREE.RepeatWrapping;
+    for (const tex of [dirtMaps.diffuse, dirtMaps.roughness]) {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+    }
 
     const trailMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       map: dirtMaps.diffuse,
       roughnessMap: dirtMaps.roughness,
-      roughness: 0.88,
-      metalness: 0.04,
-      flatShading: true,
+      roughness: 0.82,
+      metalness: 0.01,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1
     });
 
-    const trailMesh = new THREE.Mesh(geo, trailMat);
-    trailMesh.receiveShadow = true;
-    trailMesh.name = 'Level1_MudTrail_Ribbon';
-    this.group.add(trailMesh);
+    const trail = new THREE.Mesh(geo, trailMat);
+    trail.receiveShadow = true;
+    trail.name = 'Level1_MudTrail_Ribbon';
+    this.group.add(trail);
+
+    this.buildWheelRuts();
+  }
+
+  buildWheelRuts() {
+    // Narrow translucent ribbons follow the exact path and read as wet compacted ruts,
+    // without the ugly rectangular decal vocabulary from the old level.
+    const buildRut = (lateral, name) => {
+      const curvePts = [];
+      const steps = 150;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const c = campaignPath.getWorldPointAt(t);
+        const tan = campaignPath.getWorldTangentAt(t);
+        const n = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+        c.addScaledVector(n, lateral);
+        c.y = this.sampleHeight(c.x, c.z) + 0.03;
+        curvePts.push(c);
+      }
+
+      // Tube is only 3cm high/radius and reads like a glossy mud depression line.
+      const curve = new THREE.CatmullRomCurve3(curvePts);
+      const geo = new THREE.TubeGeometry(curve, 220, 0.065, 5, false);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x332419,
+        roughness: 0.34,
+        metalness: 0.0,
+        transparent: true,
+        opacity: 0.72
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = name;
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
+    };
+
+    buildRut(-1.28, 'Level1_WetRut_L');
+    buildRut(1.28, 'Level1_WetRut_R');
   }
 
   buildOrganicPuddles() {
-    // 3 Organic rounded water puddles placed naturally along trail shoulders
     const puddleLocations = [
       { t: 0.32, latOffset: -2.2, rX: 2.2, rZ: 1.4, rot: 0.4 },
-      { t: 0.58, latOffset:  2.6, rX: 1.8, rZ: 2.0, rot: -0.3 },
+      { t: 0.58, latOffset: 2.6, rX: 1.8, rZ: 2.0, rot: -0.3 },
       { t: 0.76, latOffset: -1.8, rX: 2.4, rZ: 1.6, rot: 0.6 }
     ];
 
     const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x1a2624,
-      roughness: 0.08,
-      metalness: 0.25,
+      color: 0x334a46,
+      roughness: 0.20,
+      metalness: 0.06,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.74,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2
     });
 
-    puddleLocations.forEach((pud, idx) => {
-      const worldCenter = campaignPath.getWorldPointAt(pud.t);
-      const worldTan = campaignPath.getWorldTangentAt(pud.t);
-      const normal = new THREE.Vector3(-worldTan.z, 0, worldTan.x).normalize();
-      const pos = worldCenter.clone().addScaledVector(normal, pud.latOffset);
-      pos.y = 0.032;
+    puddleLocations.forEach((p, idx) => {
+      const center = campaignPath.getWorldPointAt(p.t);
+      const tan = campaignPath.getWorldTangentAt(p.t);
+      const normal = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+      const pos = center.clone().addScaledVector(normal, p.latOffset);
+      pos.y = this.sampleHeight(pos.x, pos.z) + 0.025;
 
-      // Elliptical organic disk geometry (circle scaled non-uniformly)
-      const geo = new THREE.CircleGeometry(1.0, 24);
+      const geo = new THREE.CircleGeometry(1, 24);
       geo.rotateX(-Math.PI / 2);
-      geo.scale(pud.rX, 1.0, pud.rZ);
+      geo.scale(p.rX, 1, p.rZ);
 
       const mesh = new THREE.Mesh(geo, waterMat);
       mesh.position.copy(pos);
-      mesh.rotation.y = pud.rot;
+      mesh.rotation.y = p.rot;
       mesh.name = `Level1_OrganicPuddle_${idx + 1}`;
       mesh.receiveShadow = true;
       this.group.add(mesh);
@@ -239,43 +250,41 @@ export class Level1Ground {
   }
 
   buildFoundationDecals() {
-    // Organic ground transition zones: Relay Packed Earth & Repeater Scorch
-    const foundationMat = new THREE.MeshStandardMaterial({
-      color: 0x483a2c,
-      roughness: 0.95,
-      metalness: 0.0,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1
-    });
-
-    // Relay plinth ground apron (s=0 to 18m)
-    const relayGroundGeo = new THREE.CircleGeometry(16.0, 32);
-    relayGroundGeo.rotateX(-Math.PI / 2);
-    relayGroundGeo.scale(1.1, 1.0, 0.9);
-    const relayGround = new THREE.Mesh(relayGroundGeo, foundationMat);
-    const relayPos = campaignFrame.requireAnchor('relay_hq');
-    relayGround.position.set(relayPos.x, 0.015, relayPos.z);
-    relayGround.name = 'Level1_RelayFoundation_Apron';
-    relayGround.receiveShadow = true;
-    this.group.add(relayGround);
-
-    // Repeater scorched earth zone (s=140 to 165m)
-    const scorchMat = new THREE.MeshStandardMaterial({
-      color: 0x222422,
+    const relayMat = new THREE.MeshStandardMaterial({
+      color: 0x765e43,
       roughness: 0.92,
-      metalness: 0.08,
+      metalness: 0,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1
     });
-    const repGroundGeo = new THREE.CircleGeometry(18.0, 32);
-    repGroundGeo.rotateX(-Math.PI / 2);
-    const repGround = new THREE.Mesh(repGroundGeo, scorchMat);
+
+    const relayGeo = new THREE.CircleGeometry(16, 40);
+    relayGeo.rotateX(-Math.PI / 2);
+    relayGeo.scale(1.1, 1, 0.9);
+    const relay = new THREE.Mesh(relayGeo, relayMat);
+    const relayPos = campaignFrame.requireAnchor('relay_hq');
+    relay.position.set(relayPos.x, this.sampleHeight(relayPos.x, relayPos.z) + 0.012, relayPos.z);
+    relay.name = 'Level1_RelayFoundation_Apron';
+    relay.receiveShadow = true;
+    this.group.add(relay);
+
+    const scorchMat = new THREE.MeshStandardMaterial({
+      color: 0x34352f,
+      roughness: 0.9,
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+
+    const repGeo = new THREE.CircleGeometry(18, 40);
+    repGeo.rotateX(-Math.PI / 2);
+    const rep = new THREE.Mesh(repGeo, scorchMat);
     const repPos = campaignFrame.requireAnchor('repeater_site');
-    repGround.position.set(repPos.x, 0.015, repPos.z);
-    repGround.name = 'Level1_RepeaterScorch_Apron';
-    repGround.receiveShadow = true;
-    this.group.add(repGround);
+    rep.position.set(repPos.x, this.sampleHeight(repPos.x, repPos.z) + 0.012, repPos.z);
+    rep.name = 'Level1_RepeaterScorch_Apron';
+    rep.receiveShadow = true;
+    this.group.add(rep);
   }
 }
