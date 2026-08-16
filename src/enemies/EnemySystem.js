@@ -6,22 +6,24 @@ import { missionEvents } from '../missions/MissionEvents.js';
 import { inputRouter } from '../input/InputRouter.js';
 
 /**
- * EnemySystem: Manages machine enemy spawns, first-encounter combat tutorial,
- * and narrative loot drops.
+ * EnemySystem: Strictly armed encounter system with input-driven combat tutorial
+ * and wave reinforcements.
  */
 export class EnemySystem {
-  constructor(scene, combatSystem, lootSystem, audioSystem, dialogueUI, cameraController) {
+  constructor(scene, combatSystem, lootSystem, audioSystem, dialogueUI, cameraController, missionSystem) {
     this.scene = scene;
     this.combatSystem = combatSystem;
     this.lootSystem = lootSystem;
     this.audioSystem = audioSystem;
     this.dialogueUI = dialogueUI;
     this.cameraController = cameraController;
+    this.missionSystem = missionSystem;
 
     this.enemies = [];
     this.scarabModel = null;
+    this.isArmed = false;
     this.isEncounterActive = false;
-    this.combatTutorialShown = false;
+    this.combatTutorialCompleted = false;
     this.isTutorialPaused = false;
     this.waveNumber = 0;
     this.killedInEncounter = 0;
@@ -37,8 +39,21 @@ export class EnemySystem {
     });
   }
 
+  armEncounter(encounterId) {
+    if (encounterId === 'scarab_ambush') {
+      this.isArmed = true;
+    }
+  }
+
   startFirstEncounter() {
-    if (this.isEncounterActive) return;
+    if (this.isEncounterActive || !this.isArmed) return;
+
+    const currentObj = this.missionSystem?.getCurrentObjective();
+    console.assert(
+      currentObj?.id === 'obj_follow_trace',
+      'AMBUSH STARTED BEFORE FOLLOW TRACE OBJECTIVE'
+    );
+
     this.isEncounterActive = true;
     this.waveNumber = 1;
     this.killedInEncounter = 0;
@@ -51,57 +66,109 @@ export class EnemySystem {
     this.spawnScarab('scarab_spawn_1', false);
     this.spawnScarab('scarab_spawn_2', false);
 
-    // Trigger Contextual Combat Tutorial
-    if (!this.combatTutorialShown) {
-      this.combatTutorialShown = true;
-      this.triggerCombatTutorial();
+    // Trigger Input-Driven Combat Tutorial
+    if (!this.combatTutorialCompleted) {
+      this.triggerInteractiveCombatTutorial();
     }
   }
 
-  triggerCombatTutorial() {
+  triggerInteractiveCombatTutorial() {
     this.isTutorialPaused = true;
-    inputRouter.setLayer('combat_tutorial_freeze', true);
+    inputRouter.setLayer('combat_tutorial', true);
 
-    const overlay = document.createElement('div');
-    overlay.id = 'combat-tutorial-card';
-    overlay.style.cssText = `
+    const card = document.createElement('div');
+    card.id = 'interactive-combat-tut';
+    card.style.cssText = `
       position: absolute;
-      top: 25%;
+      top: 24%;
       left: 50%;
       transform: translate(-50%, -50%);
-      background: rgba(14, 20, 26, 0.96);
+      background: rgba(12, 18, 24, 0.96);
       border: 1px solid #00f0ff;
       border-radius: 8px;
-      padding: 16px 28px;
-      box-shadow: 0 12px 36px rgba(0, 240, 255, 0.25);
+      padding: 14px 28px;
+      box-shadow: 0 8px 32px rgba(0, 240, 255, 0.3);
       text-align: center;
-      z-index: 4000;
+      z-index: 4500;
       color: #ffffff;
       font-family: monospace, sans-serif;
     `;
 
-    overlay.innerHTML = `
-      <div style="font-size:12px; color:#00f0ff; letter-spacing:2px; font-weight:bold; margin-bottom:4px;">COMBAT INTEL</div>
-      <div style="font-size:18px; font-weight:bold; margin-bottom:8px;">STORMCORE DISCHARGE</div>
-      <div style="font-size:13px; color:#f0f6fc; margin-bottom:6px;">
-        1. Point <span style="color:#00f0ff; font-weight:bold;">MOUSE</span> at machine to lock-on
-      </div>
-      <div style="font-size:13px; color:#f0f6fc;">
-        2. Hold <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">LMB</span> to charge &bull; Release to strike
+    card.innerHTML = `
+      <div id="tut-step-tag" style="font-size:11px; color:#00f0ff; letter-spacing:2px; font-weight:bold; margin-bottom:4px;">COMBAT INTEL &bull; STEP 1</div>
+      <div id="tut-step-instruction" style="font-size:17px; font-weight:bold; margin-bottom:8px;">AIM AT TARGET MACHINE</div>
+      <div id="tut-step-sub" style="font-size:13px; color:#8b949e;">Move your cursor over the highlighted Scarab</div>
+      <div id="tut-meter-container" style="display:none; width:220px; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; margin:10px auto 0; overflow:hidden;">
+        <div id="tut-charge-meter" style="width:0%; height:100%; background:#00f0ff; transition:width 0.05s linear;"></div>
       </div>
     `;
 
-    document.body.appendChild(overlay);
+    document.body.appendChild(card);
 
-    setTimeout(() => {
-      overlay.style.opacity = '0';
-      overlay.style.transition = 'opacity 0.3s ease';
-      setTimeout(() => {
-        overlay.remove();
-        this.isTutorialPaused = false;
-        inputRouter.setLayer('combat_tutorial_freeze', false);
-      }, 300);
-    }, 2400);
+    const tagEl = card.querySelector('#tut-step-tag');
+    const titleEl = card.querySelector('#tut-step-instruction');
+    const subEl = card.querySelector('#tut-step-sub');
+    const meterContainer = card.querySelector('#tut-meter-container');
+    const meterEl = card.querySelector('#tut-charge-meter');
+
+    let tutStage = 1; // 1: AIM, 2: HOLD LMB
+    let holdDuration = 0;
+
+    const checkAimHandler = (e) => {
+      if (tutStage === 1 && this.enemies.length > 0) {
+        // Project first enemy to screen
+        const target = this.enemies[0];
+        const screenPos = target.position.clone().project(this.cameraController.camera);
+        const screenX = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+        const screenY = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
+
+        const dist = Math.hypot(e.clientX - screenX, e.clientY - screenY);
+        if (dist < 180) {
+          tutStage = 2;
+          tagEl.textContent = 'COMBAT INTEL • STEP 2';
+          titleEl.textContent = 'HOLD [LMB] TO CHARGE HAMMER';
+          subEl.textContent = 'Hold left mouse button to build Arc power';
+          meterContainer.style.display = 'block';
+        }
+      }
+    };
+
+    let isHolding = false;
+    const downHandler = (e) => {
+      if (tutStage === 2 && e.button === 0) isHolding = true;
+    };
+    const upHandler = (e) => {
+      if (e.button === 0) isHolding = false;
+    };
+
+    window.addEventListener('mousemove', checkAimHandler);
+    window.addEventListener('mousedown', downHandler);
+    window.addEventListener('mouseup', upHandler);
+
+    const pollInterval = setInterval(() => {
+      if (tutStage === 2 && isHolding) {
+        holdDuration += 0.05;
+        const pct = Math.min(100, Math.floor((holdDuration / 0.55) * 100));
+        meterEl.style.width = `${pct}%`;
+
+        if (holdDuration >= 0.55) {
+          clearInterval(pollInterval);
+          window.removeEventListener('mousemove', checkAimHandler);
+          window.removeEventListener('mousedown', downHandler);
+          window.removeEventListener('mouseup', upHandler);
+
+          titleEl.textContent = 'RELEASE TO DISCHARGE!';
+          titleEl.style.color = '#30d158';
+
+          setTimeout(() => {
+            card.remove();
+            this.isTutorialPaused = false;
+            this.combatTutorialCompleted = true;
+            inputRouter.setLayer('combat_tutorial', false);
+          }, 350);
+        }
+      }
+    }, 50);
   }
 
   spawnScarab(anchorName, isFinal = false) {
@@ -149,14 +216,14 @@ export class EnemySystem {
       this.waveNumber = 2;
       setTimeout(() => {
         this.spawnScarab('scarab_spawn_4', false);
-        this.spawnScarab('scarab_spawn_5', true); // Final scarab
+        this.spawnScarab('scarab_spawn_5', true);
         if (this.audioSystem) {
           this.audioSystem.playScarabWarning();
         }
-      }, 800);
+      }, 600);
     }
 
-    // Check if encounter completed
+    // Encounter completed
     if (this.killedInEncounter >= this.totalInEncounter || deadEnemy.isFinalScarab) {
       if (this.lootSystem) {
         this.lootSystem.spawnPickup('Signal Shard', 1, dropPos);
@@ -184,8 +251,8 @@ export class EnemySystem {
       e.update(dt, playerPos);
     }
 
-    // Trigger ambush when player reaches local Z >= 78
-    if (!this.isEncounterActive && playerPos) {
+    // Trigger ambush only if armed and in ambush zone
+    if (this.isArmed && !this.isEncounterActive && playerPos) {
       const local = campaignFrame.toLocal(playerPos);
       if (local.z >= 78.0 && local.z <= 118.0) {
         this.startFirstEncounter();

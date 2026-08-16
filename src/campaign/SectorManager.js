@@ -8,7 +8,7 @@ import { campaignPath } from './CampaignPath.js';
 import { missionEvents } from '../missions/MissionEvents.js';
 
 /**
- * SectorManager: Coordinates authored buildings, interior reveals, and props along CampaignPath.
+ * SectorManager: Orchestrates authored Relay HQ, Repeater Site, and path prop dressing.
  */
 export class SectorManager {
   constructor(scene, collisionRegistry, interactionSystem, lootSystem, npcSystem, cutsceneDirector, fenceSystem, interiorRevealSystem) {
@@ -28,11 +28,7 @@ export class SectorManager {
     this.sectors = new Map();
     this.activeSectorId = null;
     this.loader = new GLTFLoader();
-    this.modelsCache = new Map();
-
     this.isGateOpen = false;
-    this.gateDoorL = null;
-    this.gateDoorR = null;
 
     this.initSectors();
   }
@@ -53,15 +49,10 @@ export class SectorManager {
   }
 
   async loadAllAssetsAndBuild() {
-    const [fenceGLTF, arcPropsGLTF, relayHQGLTF, repeaterSiteGLTF] = await Promise.all([
-      this.loadGLTFPromise('/models/world/electric_fence_set.glb'),
-      this.loadGLTFPromise('/models/world/arc_props.glb'),
+    const [relayHQGLTF, repeaterSiteGLTF] = await Promise.all([
       this.loadGLTFPromise('/models/world/relay_hq.glb'),
       this.loadGLTFPromise('/models/world/repeater_site.glb')
     ]);
-
-    this.storeModelParts(fenceGLTF.scene);
-    this.storeModelParts(arcPropsGLTF.scene);
 
     this.buildRelayHQ(relayHQGLTF.scene);
     this.buildRepeaterSite(repeaterSiteGLTF.scene);
@@ -72,14 +63,6 @@ export class SectorManager {
   loadGLTFPromise(url) {
     return new Promise((resolve, reject) => {
       this.loader.load(url, resolve, undefined, reject);
-    });
-  }
-
-  storeModelParts(rootScene) {
-    rootScene.traverse((child) => {
-      if (child.name && child.name.length > 2 && !this.modelsCache.has(child.name)) {
-        this.modelsCache.set(child.name, child);
-      }
     });
   }
 
@@ -96,44 +79,42 @@ export class SectorManager {
     });
 
     this.rootGroup.add(hqScene);
+    hqScene.updateMatrixWorld(true);
 
-    // Register Interior Reveal Trigger Box (~9.5m x 8.0m around Relay HQ)
+    // Build colliders from authored markers
+    if (this.collision) {
+      this.collision.buildFromRoots({ relay_hq: hqScene });
+      console.assert(this.collision.has('COL_BOX_WALL_N'), 'RELAY COLLIDERS NOT BUILT FROM MARKERS');
+    }
+
+    // Register Interior Reveal with Approach and Interior Trigger Boxes
     if (this.interiorRevealSystem) {
       const triggerBox = new THREE.Box3().setFromCenterAndSize(
         hqWorldPos.clone().add(new THREE.Vector3(0, 1.6, 0)),
-        new THREE.Vector3(9.5, 4.0, 8.0)
+        new THREE.Vector3(8.6, 4.0, 6.4)
+      );
+      const approachBox = new THREE.Box3().setFromCenterAndSize(
+        hqWorldPos.clone().add(new THREE.Vector3(0, 1.6, -3.2)),
+        new THREE.Vector3(7.0, 4.0, 4.5)
       );
       this.interiorRevealSystem.registerBuilding({
         id: 'relay_hq',
         rootGroup: hqScene,
-        triggerBox
+        triggerBox,
+        approachBox
       });
     }
 
-    // Register Solid Wall Colliders with open south doorway
-    if (this.collision) {
-      const baseYaw = hqScene.rotation.y;
-      // North Wall
-      this.collision.addBox(hqWorldPos.x, hqWorldPos.z + 3.0, 8.4, 0.8, baseYaw, 'col_hq_wall_n');
-      // West Wall
-      this.collision.addBox(hqWorldPos.x - 4.1, hqWorldPos.z, 0.8, 6.0, baseYaw, 'col_hq_wall_w');
-      // East Wall
-      this.collision.addBox(hqWorldPos.x + 4.1, hqWorldPos.z, 0.8, 6.0, baseYaw, 'col_hq_wall_e');
-      // South Wall Left & Right of doorway (Doorway between X: -1.0 .. 1.0)
-      this.collision.addBox(hqWorldPos.x - 2.8, hqWorldPos.z - 3.0, 3.2, 0.8, baseYaw, 'col_hq_wall_s_l');
-      this.collision.addBox(hqWorldPos.x + 2.8, hqWorldPos.z - 3.0, 3.2, 0.8, baseYaw, 'col_hq_wall_s_r');
-    }
-
-    // Place Mara inside the communications room beside the terminal console
+    // Place Mara inside communications room beside terminal console
     if (this.npcSystem) {
-      const maraPos = hqWorldPos.clone().add(new THREE.Vector3(1.6, 0, 1.4));
+      const maraPos = hqWorldPos.clone().add(new THREE.Vector3(2.4, 0, 1.2));
       this.npcSystem.registerNPC({
         id: 'mara',
         name: 'Mara',
         x: maraPos.x,
         y: maraPos.y,
         z: maraPos.z,
-        rotY: hqScene.rotation.y + Math.PI * 0.75
+        rotY: hqScene.rotation.y + Math.PI
       }, this.rootGroup);
     }
   }
@@ -218,7 +199,7 @@ export class SectorManager {
     this.interactionSystem.registerInteractable({
       id: 'signal_console',
       position: consolePos,
-      radius: 3.0,
+      radius: 2.8,
       text: 'Inspect Signal Telemetry',
       promptOffsetY: 1.4,
       onInteract: () => {
@@ -255,7 +236,7 @@ export class SectorManager {
     if (this.cutsceneDirector) {
       this.cutsceneDirector.playShot({
         targetPos: gatePos,
-        duration: 3.0,
+        duration: 2.8,
         subtitle: {
           speaker: 'MARA',
           text: "Handshake verified. North perimeter gate unlocked."

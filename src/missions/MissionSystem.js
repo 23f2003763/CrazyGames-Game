@@ -5,14 +5,16 @@ import { missionEvents } from './MissionEvents.js';
  * MissionSystem: Event-driven campaign mission orchestrator.
  */
 export class MissionSystem {
-  constructor(audioSystem, checkpointSystem) {
+  constructor(audioSystem, checkpointSystem, enemySystem) {
     this.audioSystem = audioSystem;
     this.checkpointSystem = checkpointSystem;
+    this.enemySystem = enemySystem;
 
     this.missions = MISSIONS;
     this.currentMissionIndex = 0;
     this.currentMission = this.missions[0];
     this.currentObjectiveIndex = 0;
+    this.completedObjectiveIds = new Set();
 
     this.onObjectiveChanged = null;
     this.onMissionCompleted = null;
@@ -20,9 +22,17 @@ export class MissionSystem {
     this.initEventListeners();
   }
 
+  setEnemySystem(enemySystem) {
+    this.enemySystem = enemySystem;
+  }
+
   getCurrentObjective() {
     if (!this.currentMission) return null;
     return this.currentMission.objectives[this.currentObjectiveIndex] || null;
+  }
+
+  hasCompletedObjective(objectiveId) {
+    return this.completedObjectiveIds.has(objectiveId);
   }
 
   initEventListeners() {
@@ -69,14 +79,24 @@ export class MissionSystem {
 
   advanceObjective() {
     const prevObj = this.getCurrentObjective();
+    if (prevObj) {
+      this.completedObjectiveIds.add(prevObj.id);
+    }
+
     this.currentObjectiveIndex++;
 
     if (this.audioSystem) {
       this.audioSystem.playObjectiveUpdate();
     }
 
+    const nextObj = this.getCurrentObjective();
+
+    // Arm scarab ambush only when follow trace becomes active
+    if (nextObj?.id === 'obj_follow_trace' && this.enemySystem) {
+      this.enemySystem.armEncounter('scarab_ambush');
+    }
+
     if (prevObj?.id === 'obj_reach_repeater') {
-      // Level 1 Complete moment!
       if (this.onMissionCompleted) {
         this.onMissionCompleted(this.currentMission);
       }
@@ -90,7 +110,6 @@ export class MissionSystem {
       }
     }
 
-    const nextObj = this.getCurrentObjective();
     if (this.onObjectiveChanged) {
       this.onObjectiveChanged(nextObj, this.currentMission);
     }
@@ -98,12 +117,12 @@ export class MissionSystem {
 
   update(playerPos) {
     const obj = this.getCurrentObjective();
-    if (!obj) return;
+    if (!obj || !playerPos) return;
 
-    if (obj.type === 'REACH') {
-      const dist = playerPos.distanceTo(obj.targetPos);
-      const reachRad = obj.reachRadius || 8.0;
-      if (dist <= reachRad) {
+    // Check distance-based REACH objectives
+    if (obj.type === 'REACH' && obj.targetPos) {
+      const rad = obj.reachRadius || 6.0;
+      if (playerPos.distanceTo(obj.targetPos) <= rad) {
         missionEvents.emit('zoneReached', obj.targetId);
       }
     }

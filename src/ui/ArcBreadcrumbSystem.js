@@ -4,6 +4,7 @@ import { campaignPath } from '../campaign/CampaignPath.js';
 /**
  * ArcBreadcrumbSystem: Narrow chevron shards of cyan Arc energy embedded in the muddy
  * trail, oriented along the actual CampaignPath tangent with traveling electrical pulses.
+ * Activates ONLY during 'Follow the Signal' and later trail progression.
  */
 export class ArcBreadcrumbSystem {
   constructor(scene) {
@@ -51,11 +52,19 @@ export class ArcBreadcrumbSystem {
   }
 
   setObjective(objective) {
-    if (!objective || !objective.targetPos) {
+    // Only show trail breadcrumbs during external corridor progression
+    if (!objective || (objective.id !== 'obj_follow_trace' && objective.id !== 'obj_reach_repeater')) {
       this.currentTargetPos = null;
       this.markers.forEach(m => m.visible = false);
       return;
     }
+
+    if (!objective.targetPos) {
+      this.currentTargetPos = null;
+      this.markers.forEach(m => m.visible = false);
+      return;
+    }
+
     this.currentTargetPos = objective.targetPos.clone();
   }
 
@@ -84,7 +93,6 @@ export class ArcBreadcrumbSystem {
           const tangent = campaignPath.getWorldTangentAt(sampleT);
 
           marker.position.set(worldPos.x, 0.05, worldPos.z);
-          // Orient chevron along forward path tangent
           marker.rotation.y = Math.atan2(-tangent.x, -tangent.z);
           marker.visible = true;
 

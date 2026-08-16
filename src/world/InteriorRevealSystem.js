@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
 /**
- * InteriorRevealSystem: Seamless Zomboid-style roof and camera-wall fade
- * for accessible building interiors.
+ * InteriorRevealSystem: 2-tier approach & interior reveal with smooth opacity transitions.
+ * Approach zone (near doorway): roof opacity -> 0.35
+ * Interior zone (inside): roof opacity -> 0.02, camera wall opacity -> 0.12
  */
 export class InteriorRevealSystem {
   constructor() {
@@ -10,19 +11,23 @@ export class InteriorRevealSystem {
   }
 
   registerBuilding(config) {
-    // config: { id, rootGroup, triggerBox: Box3 }
-    const fadeMeshes = [];
-    const originalMaterials = new Map();
+    // config: { id, rootGroup, triggerBox: Box3, approachBox: Box3 }
+    const roofMeshes = [];
+    const wallMeshes = [];
 
     config.rootGroup.traverse((child) => {
-      if (child.name.includes('ROOF_FADE') || child.name.includes('WALL_FADE') || child.name.includes('Roof') || child.name.includes('Wall_Fade')) {
-        if (child.isMesh) {
-          // Clone material for independent opacity control
+      if (child.isMesh) {
+        const name = child.name.toLowerCase();
+        if (name.includes('roof') || child.parent?.name?.includes('ROOF_FADE')) {
           const mat = child.material.clone();
           mat.transparent = true;
           child.material = mat;
-          fadeMeshes.push(child);
-          originalMaterials.set(child.uuid, mat);
+          roofMeshes.push(child);
+        } else if (name.includes('wall_fade') || child.parent?.name?.includes('WALL_FADE')) {
+          const mat = child.material.clone();
+          mat.transparent = true;
+          child.material = mat;
+          wallMeshes.push(child);
         }
       }
     });
@@ -31,9 +36,13 @@ export class InteriorRevealSystem {
       id: config.id,
       root: config.rootGroup,
       triggerBox: config.triggerBox,
-      fadeMeshes,
-      currentAlpha: 1.0,
-      targetAlpha: 1.0
+      approachBox: config.approachBox || config.triggerBox,
+      roofMeshes,
+      wallMeshes,
+      currentRoofAlpha: 1.0,
+      targetRoofAlpha: 1.0,
+      currentWallAlpha: 1.0,
+      targetWallAlpha: 1.0
     });
   }
 
@@ -41,20 +50,35 @@ export class InteriorRevealSystem {
     if (!playerPos) return;
 
     for (const b of this.buildings) {
-      // Check if player is inside the building trigger box
       const isInside = b.triggerBox.containsPoint(playerPos);
-      b.targetAlpha = isInside ? 0.0 : 1.0;
+      const isApproaching = b.approachBox.containsPoint(playerPos);
 
-      // Smooth opacity interpolation
-      if (Math.abs(b.currentAlpha - b.targetAlpha) > 0.01) {
-        b.currentAlpha = THREE.MathUtils.lerp(b.currentAlpha, b.targetAlpha, dt * 8.0);
-
-        b.fadeMeshes.forEach((mesh) => {
-          mesh.material.opacity = b.currentAlpha;
-          mesh.material.depthWrite = b.currentAlpha > 0.85;
-          mesh.visible = b.currentAlpha > 0.02;
-        });
+      if (isInside) {
+        b.targetRoofAlpha = 0.02;
+        b.targetWallAlpha = 0.12;
+      } else if (isApproaching) {
+        b.targetRoofAlpha = 0.35;
+        b.targetWallAlpha = 0.60;
+      } else {
+        b.targetRoofAlpha = 1.0;
+        b.targetWallAlpha = 1.0;
       }
+
+      // Smooth interpolation
+      b.currentRoofAlpha = THREE.MathUtils.lerp(b.currentRoofAlpha, b.targetRoofAlpha, dt * 10.0);
+      b.currentWallAlpha = THREE.MathUtils.lerp(b.currentWallAlpha, b.targetWallAlpha, dt * 10.0);
+
+      b.roofMeshes.forEach((mesh) => {
+        mesh.material.opacity = b.currentRoofAlpha;
+        mesh.material.depthWrite = b.currentRoofAlpha > 0.85;
+        mesh.visible = b.currentRoofAlpha > 0.03;
+      });
+
+      b.wallMeshes.forEach((mesh) => {
+        mesh.material.opacity = b.currentWallAlpha;
+        mesh.material.depthWrite = b.currentWallAlpha > 0.85;
+        mesh.visible = b.currentWallAlpha > 0.03;
+      });
     }
   }
 }

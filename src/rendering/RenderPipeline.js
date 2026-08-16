@@ -6,7 +6,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 /**
  * Lightweight, high-performance rendering & lighting pipeline
- * calibrated for rich material response, crisp soft shadows, and vibrant tone mapping.
+ * calibrated for rich material response, crisp soft shadows, and bright daytime readability.
  */
 export class RenderPipeline {
   constructor(container, scene, camera) {
@@ -33,12 +33,12 @@ export class RenderPipeline {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // 1. Correct Color Management
+    // 1. Display output color space
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    // 2. ACES Filmic Tone Mapping with balanced exposure
+    // 2. ACES Filmic Tone Mapping with high daytime readability
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 1.25;
 
     // 3. High-Fidelity Soft Shadows
     this.renderer.shadowMap.enabled = true;
@@ -48,45 +48,42 @@ export class RenderPipeline {
   }
 
   initAtmosphere() {
-    // Stylized post-apocalyptic sky & gentle horizon atmosphere
-    const skyColor = new THREE.Color(0x9cb8aa);
+    const skyColor = new THREE.Color(0xa2c4b8);
     this.scene.background = skyColor;
-    this.scene.fog = new THREE.FogExp2(0x9cb8aa, 0.0032);
+    this.scene.fog = new THREE.FogExp2(0xa2c4b8, 0.0028);
   }
 
   initLighting() {
-    // 1. Hemisphere Light: Sky (cooler daylight) + Ground (warm earthy bounce)
-    const hemiLight = new THREE.HemisphereLight(0xb4daf5, 0x3a4232, 0.82);
+    // 1. Hemisphere Light: Sky daylight + Ground warm earthy bounce
+    const hemiLight = new THREE.HemisphereLight(0xc2e2f8, 0x4a5240, 1.05);
     hemiLight.position.set(0, 90, 0);
     this.scene.add(hemiLight);
     this.hemiLight = hemiLight;
 
-    // 2. Main Directional Sunlight: Warm golden sun angled for crisp isometric depth
-    const sunLight = new THREE.DirectionalLight(0xfff0d2, 1.42);
+    // 2. Main Directional Sunlight: Crisp warm sun
+    const sunLight = new THREE.DirectionalLight(0xfff4dc, 1.50);
     sunLight.position.set(-60, 90, 60);
     sunLight.castShadow = true;
 
-    // Tight shadow camera frustum focused around active player/camera area
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.camera.near = 10;
     sunLight.shadow.camera.far = 200;
 
-    const shadowExtent = 44; // Tight 44m bounding box gives razor-sharp shadow resolution
+    const shadowExtent = 48;
     sunLight.shadow.camera.left = -shadowExtent;
     sunLight.shadow.camera.right = shadowExtent;
     sunLight.shadow.camera.top = shadowExtent;
     sunLight.shadow.camera.bottom = -shadowExtent;
     
-    // NormalBias to eliminate shadow acne on low-poly geometry
     sunLight.shadow.bias = -0.0004;
     sunLight.shadow.normalBias = 0.04;
 
     this.scene.add(sunLight);
     this.sunLight = sunLight;
 
-    // 3. Subtle secondary cool fill light from opposite flank
-    const fillLight = new THREE.DirectionalLight(0x6e9cb0, 0.32);
+    // 3. Cool fill light from opposite side for shadow readability
+    const fillLight = new THREE.DirectionalLight(0x7ea8be, 0.42);
     fillLight.position.set(70, 50, -60);
     this.scene.add(fillLight);
     this.fillLight = fillLight;
@@ -96,10 +93,10 @@ export class RenderPipeline {
     const width = window.innerWidth;
     const height = window.innerHeight;
 
+    // Intermediate render target in Linear space
     const renderTarget = new THREE.WebGLRenderTarget(width, height, {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
-      colorSpace: THREE.SRGBColorSpace,
       samples: 4,
     });
 
@@ -110,17 +107,17 @@ export class RenderPipeline {
     this.composer.addPass(renderPass);
     this.renderPass = renderPass;
 
-    // Pass 2: Subtle Bloom for fires, lamps, and bright specular glints
+    // Pass 2: Subtle Bloom
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(width, height),
-      0.14,  // Subtle strength
-      0.40,  // Radius
-      0.84   // Threshold: Only lights/fire glow
+      0.16,
+      0.40,
+      0.82
     );
     this.composer.addPass(bloomPass);
     this.bloomPass = bloomPass;
 
-    // Pass 3: OutputPass
+    // Pass 3: OutputPass for final color space & tone mapping conversion
     const outputPass = new OutputPass();
     this.composer.addPass(outputPass);
   }
@@ -131,7 +128,6 @@ export class RenderPipeline {
   }
 
   render(deltaTime, cameraTarget) {
-    // Dynamically center the directional shadow frustum over camera target
     if (cameraTarget && this.sunLight) {
       const sunOffset = new THREE.Vector3(-60, 90, 60);
       this.sunLight.position.copy(cameraTarget).add(sunOffset);

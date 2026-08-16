@@ -101,7 +101,20 @@ def build_relay_hq():
     create_box("Ext_Antenna_Mast_Mount", (0.4, 0.4, 2.8), location=(3.8, 2.8, 2.4), mat=mat_metal_dark, parent=root)
     create_box("Ext_Power_Box", (0.6, 0.4, 1.1), location=(-3.2, -3.1, 0.6), mat=mat_accent_orange, parent=root)
 
-    # Set Flat Shading
+    # 6. Authored Physical Collider Markers (Scanned by ColliderRegistry)
+    # North Wall
+    create_box("COL_BOX_WALL_N", (8.4, 0.45, 3.2), location=(0, 2.95, 1.6), mat=None, parent=root)
+    # East Wall
+    create_box("COL_BOX_WALL_E", (0.45, 5.8, 3.2), location=(4.05, 0, 1.6), mat=None, parent=root)
+    # West Wall
+    create_box("COL_BOX_WALL_W", (0.45, 5.8, 3.2), location=(-4.05, 0, 1.6), mat=None, parent=root)
+    # South Wall Left & Right (Doorway gap between X: -1.1 .. 1.1)
+    create_box("COL_BOX_WALL_S_LEFT", (3.0, 0.45, 3.2), location=(-2.6, -2.95, 1.6), mat=None, parent=root)
+    create_box("COL_BOX_WALL_S_RIGHT", (3.0, 0.45, 3.2), location=(2.6, -2.95, 1.6), mat=None, parent=root)
+    # Interior props
+    create_box("COL_BOX_CONSOLE", (2.6, 1.2, 1.2), location=(2.4, 2.1, 0.6), mat=None, parent=root)
+    create_box("COL_BOX_WORKBENCH", (1.2, 1.8, 2.4), location=(-2.9, 1.9, 1.2), mat=None, parent=root)
+
     for obj in bpy.context.scene.objects:
         if obj.type == 'MESH':
             for p in obj.data.polygons:
@@ -117,7 +130,7 @@ def build_relay_hq():
         use_selection=False,
         export_apply=False
     )
-    print(f"Exported Relay HQ to {out_path}")
+    print(f"Exported Relay HQ with Collider Markers to {out_path}")
 
 if __name__ == '__main__':
     build_relay_hq()

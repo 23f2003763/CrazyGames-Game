@@ -22,7 +22,7 @@ export class ObjectiveGuidance {
     this.icons = {};
 
     // 1. Mission Diamond (Cyan Octahedron)
-    const geoDiamond = new THREE.OctahedronGeometry(0.22, 0);
+    const geoDiamond = new THREE.OctahedronGeometry(0.20, 0);
     const matDiamond = new THREE.MeshStandardMaterial({
       color: 0x00f0ff,
       emissive: 0x00f0ff,
@@ -34,7 +34,7 @@ export class ObjectiveGuidance {
     this.icons.MISSION.visible = false;
     this.group.add(this.icons.MISSION);
 
-    // 2. Talk Icon (Teal Torus / Speech Ring)
+    // 2. Talk Icon (Teal Speech Ring)
     const geoTalk = new THREE.TorusGeometry(0.18, 0.05, 8, 16);
     geoTalk.rotateX(Math.PI / 2);
     const matTalk = new THREE.MeshStandardMaterial({
@@ -46,8 +46,8 @@ export class ObjectiveGuidance {
     this.icons.TALK.visible = false;
     this.group.add(this.icons.TALK);
 
-    // 3. Interact Icon (Warm Amber Ring)
-    const geoInteract = new THREE.OctahedronGeometry(0.20, 0);
+    // 3. Interact Icon (Warm Amber Diamond)
+    const geoInteract = new THREE.OctahedronGeometry(0.18, 0);
     const matInteract = new THREE.MeshStandardMaterial({
       color: 0xffaa00,
       emissive: 0xff7700,
@@ -58,7 +58,7 @@ export class ObjectiveGuidance {
     this.group.add(this.icons.INTERACT);
 
     // 4. Enemy Icon (Red-Magenta Diamond)
-    const geoEnemy = new THREE.TetrahedronGeometry(0.24, 0);
+    const geoEnemy = new THREE.TetrahedronGeometry(0.22, 0);
     const matEnemy = new THREE.MeshStandardMaterial({
       color: 0xff3366,
       emissive: 0xff1144,
@@ -69,15 +69,27 @@ export class ObjectiveGuidance {
     this.group.add(this.icons.ENEMY);
   }
 
-  setObjective(objective) {
+  setObjective(objective, npcSystem) {
     Object.values(this.icons).forEach(icon => icon.visible = false);
 
-    if (!objective || !objective.targetPos) {
+    if (!objective) {
       this.currentTargetPos = null;
       return;
     }
 
-    this.currentTargetPos = objective.targetPos.clone();
+    if (objective.type === 'TALK' && objective.targetId === 'mara' && npcSystem) {
+      const maraPos = npcSystem.getNPCWorldPosition('mara');
+      if (maraPos) {
+        this.currentTargetPos = maraPos.clone();
+      } else {
+        this.currentTargetPos = objective.targetPos ? objective.targetPos.clone() : null;
+      }
+    } else {
+      this.currentTargetPos = objective.targetPos ? objective.targetPos.clone() : null;
+    }
+
+    if (!this.currentTargetPos) return;
+
     this.currentIconType = objective.type || 'MISSION';
 
     const activeIcon = this.icons[this.currentIconType] || this.icons.MISSION;
@@ -93,7 +105,7 @@ export class ObjectiveGuidance {
     const activeIcon = this.icons[this.currentIconType] || this.icons.MISSION;
     if (activeIcon && activeIcon.visible) {
       activeIcon.rotation.y += dt * 2.5;
-      activeIcon.position.y = this.currentTargetPos.y + 2.0 + Math.sin(this.elapsedTime * 3.5) * 0.10;
+      activeIcon.position.y = this.currentTargetPos.y + 2.0 + Math.sin(this.elapsedTime * 3.5) * 0.08;
     }
   }
 }

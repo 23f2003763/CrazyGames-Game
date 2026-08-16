@@ -97,7 +97,13 @@ class GameApp {
     this.player.rotation.y = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
     this.cameraController.setPlayer(this.player);
 
-    // 9. Combat, Stormcore Hammer & Machine Enemies
+    // 9. Mission System & Guidance
+    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
+    this.breadcrumbSystem = new ArcBreadcrumbSystem(this.scene);
+    this.objectiveGuidance = new ObjectiveGuidance(this.scene, this.cameraController.camera);
+    this.objectiveHUD = new ObjectiveHUD();
+
+    // 10. Combat, Stormcore Hammer & Machine Enemies
     this.combatSystem = new CombatSystem(this.scene, this.audioSystem);
     this.weaponSystem = new WeaponSystem(
       this.scene, 
@@ -113,14 +119,10 @@ class GameApp {
       this.lootSystem, 
       this.audioSystem,
       this.dialogueUI,
-      this.cameraController
+      this.cameraController,
+      this.missionSystem
     );
-
-    // 10. Mission Guidance & HUD
-    this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
-    this.breadcrumbSystem = new ArcBreadcrumbSystem(this.scene);
-    this.objectiveGuidance = new ObjectiveGuidance(this.scene, this.cameraController.camera);
-    this.objectiveHUD = new ObjectiveHUD();
+    this.missionSystem.setEnemySystem(this.enemySystem);
 
     // 11. 2-Step Calibration Tutorial (Move -> Dodge)
     this.tutorialDirector = new TutorialDirector(
@@ -163,12 +165,13 @@ class GameApp {
     this.cutsceneDirector.playOpeningSequence(() => {
       const firstObj = this.missionSystem.getCurrentObjective();
       this.objectiveHUD.setObjective(firstObj, this.missionSystem.currentMission);
-      this.objectiveGuidance.setObjective(firstObj);
+      this.objectiveHUD.show();
+      this.objectiveGuidance.setObjective(firstObj, this.npcSystem);
       this.breadcrumbSystem.setObjective(firstObj);
 
       this.missionSystem.onObjectiveChanged = (obj, mission) => {
         this.objectiveHUD.setObjective(obj, mission);
-        this.objectiveGuidance.setObjective(obj);
+        this.objectiveGuidance.setObjective(obj, this.npcSystem);
         this.breadcrumbSystem.setObjective(obj);
       };
 
@@ -191,7 +194,6 @@ class GameApp {
     requestAnimationFrame(this.animate);
 
     const deltaTime = Math.min(this.clock.getDelta(), 0.1);
-    const elapsedTime = this.clock.getElapsedTime();
 
     // 1. Cutscene Director (letterbox & camera control)
     if (this.cutsceneDirector.isPlaying) {
@@ -236,8 +238,8 @@ class GameApp {
     this.objectiveGuidance.update(deltaTime, this.player.position);
 
     // 8. Visual Particles & Physics Debug
-    if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
-      this.movementFX.emitDust(this.player.position.x, this.player.position.z, 2.0, 4);
+    if (this.playerController.state === 'dodge') {
+      this.movementFX.emitDust(this.player.position.x, this.player.position.z, 1.5, 2);
     }
     this.movementFX.update(deltaTime, this.cameraController.camera);
     this.collision.updateDebug(this.player);

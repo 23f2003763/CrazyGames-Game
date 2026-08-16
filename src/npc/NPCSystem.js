@@ -19,26 +19,37 @@ export class NPCSystem {
     parentGroup.add(npc.group);
     this.npcs.set(config.id, npc);
 
+    const worldPos = new THREE.Vector3(config.x, config.y, config.z);
     this.interactionSystem.registerInteractable({
       id: config.id,
-      position: new THREE.Vector3(config.x, config.y, config.z),
-      radius: 3.0,
+      position: worldPos,
+      radius: 3.2,
       text: `Talk to ${config.name}`,
       promptOffsetY: 2.1,
       onInteract: () => this.talkTo(config.id)
     });
   }
 
-  talkTo(npcId) {
-    const npc = this.npcs.get(npcId);
+  getNPC(id) {
+    return this.npcs.get(id);
+  }
 
+  getNPCWorldPosition(id) {
+    const npc = this.npcs.get(id);
+    if (!npc) return null;
+    const pos = new THREE.Vector3();
+    npc.group.getWorldPosition(pos);
+    return pos;
+  }
+
+  talkTo(npcId) {
     if (npcId === 'mara') {
       const dialogueLines = [
         { speaker: 'MARA', text: "That signal crossed a channel that's been dead for nine years." },
         { speaker: 'RYDER', text: "Machine signal?" },
         { speaker: 'MARA', text: "No. That's the problem. It authenticated as human." },
         { speaker: 'RYDER', text: "Where?" },
-        { speaker: 'MARA', text: "North perimeter. Follow the trace." }
+        { speaker: 'MARA', text: "North perimeter. Check the signal terminal for the waveform." }
       ];
 
       let lineIdx = 0;
@@ -47,6 +58,7 @@ export class NPCSystem {
           const line = dialogueLines[lineIdx++];
           this.dialogueUI.showModalDialogue(line.speaker, line.text, showNextLine);
         } else {
+          this.dialogueUI.closeModal();
           missionEvents.emit('npcTalked', 'mara');
         }
       };

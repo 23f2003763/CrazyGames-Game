@@ -3,7 +3,8 @@ import { campaignFrame } from '../campaign/CampaignFrame.js';
 import { inputRouter } from '../input/InputRouter.js';
 
 /**
- * CutsceneDirector: Multi-shot timeline camera sequencing with letterbox bars and easing.
+ * CutsceneDirector: Multi-shot timeline camera sequencing with letterbox bars,
+ * easing, world actions, and exact restoration of normal gameplay camera state.
  */
 export class CutsceneDirector {
   constructor(cameraController, dialogueUI) {
@@ -20,6 +21,9 @@ export class CutsceneDirector {
     this.startTargetPos = new THREE.Vector3();
     this.endCamPos = new THREE.Vector3();
     this.endTargetPos = new THREE.Vector3();
+
+    this.savedGameplayCamPos = new THREE.Vector3();
+    this.savedGameplayTarget = new THREE.Vector3();
 
     this.createLetterbox();
     this.bindInputs();
@@ -60,6 +64,10 @@ export class CutsceneDirector {
     inputRouter.setLayer('cutscene', true);
     this.setLetterbox(true);
 
+    // Save gameplay camera state
+    this.savedGameplayCamPos.copy(this.cameraController.camera.position);
+    this.savedGameplayTarget.copy(this.cameraController.target);
+
     this.shotQueue = [...shots];
     this.onSequenceComplete = onComplete;
     this.nextShot();
@@ -88,6 +96,10 @@ export class CutsceneDirector {
       ? shot.targetPos.clone().add(shot.camOffset)
       : shot.targetPos.clone().add(new THREE.Vector3(10, 14, 10));
 
+    if (shot.onStart) {
+      shot.onStart();
+    }
+
     if (shot.subtitle && this.dialogueUI) {
       this.dialogueUI.showRadioSubtitle(shot.subtitle.speaker, shot.subtitle.text, this.duration * 1000);
     }
@@ -105,6 +117,12 @@ export class CutsceneDirector {
     this.setLetterbox(false);
     inputRouter.setLayer('cutscene', false);
 
+    // Restore gameplay camera tracking smoothly
+    if (this.cameraController.player) {
+      this.cameraController.target.copy(this.cameraController.player.position);
+      this.cameraController.camera.position.copy(this.cameraController.player.position).add(this.cameraController.offset);
+    }
+
     const cb = this.onSequenceComplete;
     this.onSequenceComplete = null;
     if (cb) cb();
@@ -116,25 +134,25 @@ export class CutsceneDirector {
     const hqPos = campaignFrame.requireAnchor('mara_hub');
 
     this.playSequence([
-      // Shot 1: Sweeping shot across Relay exterior & antenna
+      // Shot 1: Antenna sweeps and pulses
       {
         targetPos: mastPos,
         camOffset: new THREE.Vector3(12, 16, 12),
-        duration: 1.5,
+        duration: 1.6,
         subtitle: { speaker: 'MARA', text: 'Telemetry alert... External antenna picking up unknown carrier wave.' }
       },
-      // Shot 2: Camera pushes toward comms console as it powers on
+      // Shot 2: Console powers on
       {
         targetPos: consolePos,
         camOffset: new THREE.Vector3(6, 8, 6),
-        duration: 1.5,
+        duration: 1.6,
         subtitle: { speaker: 'MARA', text: 'Console just powered itself on with an incoming packet.' }
       },
-      // Shot 3: Medium composition showing Mara at console
+      // Shot 3: Mara turns to doorway
       {
         targetPos: hqPos,
         camOffset: new THREE.Vector3(8, 12, 8),
-        duration: 1.5,
+        duration: 1.6,
         subtitle: { speaker: 'MARA', text: 'Ryder. Come here.' }
       }
     ], onComplete);
@@ -145,7 +163,7 @@ export class CutsceneDirector {
 
     this.shotTimer += dt;
     const rawT = THREE.MathUtils.clamp(this.shotTimer / this.duration, 0, 1);
-    const t = 0.5 - 0.5 * Math.cos(rawT * Math.PI); // Smooth cosine ease
+    const t = 0.5 - 0.5 * Math.cos(rawT * Math.PI); // Cosine ease
 
     this.cameraController.target.lerpVectors(this.startTargetPos, this.endTargetPos, t);
     this.cameraController.camera.position.lerpVectors(this.startCamPos, this.endCamPos, t);

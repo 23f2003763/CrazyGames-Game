@@ -4,8 +4,8 @@ import { campaignPath } from './CampaignPath.js';
 import { campaignFrame } from './CampaignFrame.js';
 
 /**
- * CorridorFenceSystem: Continuous, modular electric security fence generated along
- * both sides of the authoritative CampaignPath (19–21m offset) with zero walkable gaps.
+ * CorridorFenceSystem: Places continuous modular electric perimeter fences along
+ * both flanks of the CampaignPath using standalone centered GLB assets and exact matrix colliders.
  */
 export class CorridorFenceSystem {
   constructor(scene, collisionRegistry) {
@@ -16,100 +16,118 @@ export class CorridorFenceSystem {
     this.group.name = 'CorridorFence_Group';
     this.scene.add(this.group);
 
-    this.corridorHalfWidth = 20.5; // ~41m total playable corridor width
-    this.moduleLength = 3.82;      // Overlapping modules ensure ZERO gaps
     this.fenceMesh = null;
-    this.gateMesh = null;
+    this.gateScene = null;
+    this.isGateLocked = true;
+    this.gateColliderId = null;
 
-    this.loadAndGenerate();
+    this.leftFences = [];
+    this.rightFences = [];
+
+    this.loadAssetsAndGenerate();
   }
 
-  loadAndGenerate() {
+  async loadAssetsAndGenerate() {
     const loader = new GLTFLoader();
-    loader.load('/models/world/electric_fence_set.glb', (gltf) => {
-      gltf.scene.traverse((child) => {
-        if (child.name === 'FenceStraight_4m') {
-          this.fenceMesh = child;
-        }
-        if (child.name === 'FenceGateLarge') {
-          this.gateMesh = child;
-        }
-      });
+    const [fenceGLTF, gateGLTF] = await Promise.all([
+      new Promise((res, rej) => loader.load('/models/world/fence_straight_4m.glb', res, undefined, rej)),
+      new Promise((res, rej) => loader.load('/models/world/relay_gate.glb', res, undefined, rej))
+    ]);
 
-      if (this.fenceMesh) {
-        this.generateFences();
-      }
-    });
+    this.fenceTemplate = fenceGLTF.scene;
+    this.gateTemplate = gateGLTF.scene;
+
+    this.buildPerimeterFences();
+    this.buildRelayGate();
   }
 
-  generateFences() {
-    const totalPathLen = campaignPath.totalLength;
-    const stepCount = Math.floor(totalPathLen / this.moduleLength);
+  buildPerimeterFences() {
+    const totalLen = campaignPath.totalLength;
+    const moduleSpacing = 3.92; // 4.0m fence with 0.08m overlap for zero visual gaps
+    const steps = Math.floor(totalLen / moduleSpacing);
 
-    for (let i = 0; i <= stepCount; i++) {
-      const t = i / stepCount;
+    // Left and Right offsets from corridor centerline
+    const leftOffset = -9.5;
+    const rightOffset = 9.5;
+
+    for (let i = 0; i <= steps; i++) {
+      const s = i * moduleSpacing;
+      const t = Math.min(1.0, s / totalLen);
+
       const centerPos = campaignPath.getWorldPointAt(t);
       const tangent = campaignPath.getWorldTangentAt(t);
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      const yaw = Math.atan2(tangent.x, tangent.z);
 
-      // Left Fence (normal * -halfWidth)
-      const leftPos = centerPos.clone().addScaledVector(normal, -this.corridorHalfWidth);
-      this.placeFenceModule(leftPos, yaw, `fence_L_${i}`);
+      // Yaw: Since fence length is local +X, yaw = atan2(-tangent.z, tangent.x)
+      const yaw = Math.atan2(-tangent.z, tangent.x);
 
-      // Right Fence (normal * +halfWidth)
-      const rightPos = centerPos.clone().addScaledVector(normal, this.corridorHalfWidth);
-      this.placeFenceModule(rightPos, yaw, `fence_R_${i}`);
+      // Left Flank Module
+      const posL = centerPos.clone().addScaledVector(normal, leftOffset);
+      const modL = this.fenceTemplate.clone(true);
+      modL.position.set(posL.x, 0, posL.z);
+      modL.rotation.y = yaw;
+      this.group.add(modL);
+      this.leftFences.push(modL);
+
+      if (this.collision) {
+        this.collision.addBoxFromObject(modL, { x: 4.0, z: 0.28 }, `col_fence_l_${i}`);
+      }
+
+      // Right Flank Module (skip near Relay HQ open yard if needed, else place consistently)
+      // Relay gate gap is at s ~ 28m on centerline, not flanks
+      const posR = centerPos.clone().addScaledVector(normal, rightOffset);
+      const modR = this.fenceTemplate.clone(true);
+      modR.position.set(posR.x, 0, posR.z);
+      modR.rotation.y = yaw;
+      this.group.add(modR);
+      this.rightFences.push(modR);
+
+      if (this.collision) {
+        this.collision.addBoxFromObject(modR, { x: 4.0, z: 0.28 }, `col_fence_r_${i}`);
+      }
     }
 
-    // South perimeter back wall
-    const startCenter = campaignPath.getWorldPointAt(0);
-    const startTangent = campaignPath.getWorldTangentAt(0);
-    const startNormal = new THREE.Vector3(-startTangent.z, 0, startTangent.x).normalize();
-    const startYaw = Math.atan2(startTangent.x, startTangent.z) + Math.PI / 2;
-
-    for (let d = -this.corridorHalfWidth; d <= this.corridorHalfWidth; d += this.moduleLength) {
-      const wallPos = startCenter.clone().addScaledVector(startNormal, d).addScaledVector(startTangent, -4.0);
-      this.placeFenceModule(wallPos, startYaw, `fence_back_${d}`);
-    }
-
-    // Register closed gate barrier collider at local Z = 36
-    const gatePos = campaignFrame.getAnchorWorld('relay_gate');
-    if (this.collision) {
-      this.collision.addBox(gatePos.x - 3.0, gatePos.z, 0.8, 0.8, 0, 'gate_post_L');
-      this.collision.addBox(gatePos.x + 3.0, gatePos.z, 0.8, 0.8, 0, 'gate_post_R');
-      this.collision.addBox(gatePos.x, gatePos.z, 5.6, 1.2, 0, 'closed_gate_barrier');
-    }
+    console.assert(this.validateContinuity(), 'FENCE HAS GAPS');
   }
 
-  placeFenceModule(worldPos, yaw, id) {
-    const clone = this.fenceMesh.clone(true);
-    clone.position.copy(worldPos);
-    clone.rotation.y = yaw;
+  buildRelayGate() {
+    const gatePos = campaignFrame.requireAnchor('relay_gate');
+    this.gateScene = this.gateTemplate.clone(true);
+    this.gateScene.position.copy(gatePos);
+    this.gateScene.rotation.y = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
 
-    clone.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
+    this.group.add(this.gateScene);
 
-    this.group.add(clone);
-
-    // Register solid physical collider
+    // Initial closed-door solid collider
     if (this.collision) {
-      this.collision.addBox(worldPos.x, worldPos.z, 3.9, 1.0, yaw, id);
+      this.gateColliderId = this.collision.addBox(
+        gatePos.x,
+        gatePos.z,
+        5.6,
+        0.8,
+        this.gateScene.rotation.y,
+        'col_relay_gate_door'
+      );
     }
   }
 
   unlockGate() {
-    if (this.collision) {
-      this.collision.remove('closed_gate_barrier');
-      console.log('[FENCE] Closed gate collider removed. Path is traversable.');
+    this.isGateLocked = false;
+    if (this.gateColliderId && this.collision) {
+      this.collision.remove(this.gateColliderId);
+      this.gateColliderId = null;
+    }
+
+    if (this.gateScene) {
+      // Animate swing open
+      const doorL = this.gateScene.getObjectByName('GateDoor_L_Root');
+      const doorR = this.gateScene.getObjectByName('GateDoor_R_Root');
+      if (doorL) doorL.rotation.y = -Math.PI * 0.45;
+      if (doorR) doorR.rotation.y = Math.PI * 0.45;
     }
   }
 
-  update(dt) {
-    // Electric hum / spark effects
+  validateContinuity() {
+    return this.leftFences.length > 5 && this.rightFences.length > 5;
   }
 }

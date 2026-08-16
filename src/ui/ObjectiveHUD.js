@@ -1,5 +1,6 @@
 /**
  * ObjectiveHUD: Minimal top-left objective card & Level 1 Wake Signal completion banner.
+ * Hidden during calibration and opening cinematic.
  */
 export class ObjectiveHUD {
   constructor() {
@@ -7,14 +8,14 @@ export class ObjectiveHUD {
   }
 
   createHUD() {
-    // 1. Objective Card
+    // 1. Objective Card (Hidden by default)
     this.card = document.createElement('div');
     this.card.id = 'objective-card';
     this.card.style.position = 'absolute';
     this.card.style.top = '24px';
     this.card.style.left = '24px';
     this.card.style.padding = '12px 18px';
-    this.card.style.background = 'rgba(14, 20, 26, 0.90)';
+    this.card.style.background = 'rgba(14, 20, 26, 0.92)';
     this.card.style.borderLeft = '3px solid #00f0ff';
     this.card.style.borderRadius = '4px';
     this.card.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.6)';
@@ -22,15 +23,12 @@ export class ObjectiveHUD {
     this.card.style.fontFamily = 'monospace, sans-serif';
     this.card.style.zIndex = '2000';
     this.card.style.pointerEvents = 'none';
+    this.card.style.display = 'none';
     this.card.style.transition = 'all 0.3s ease';
 
     this.card.innerHTML = `
-      <div id="hud-mission-title" style="font-size:11px; color:#00f0ff; text-transform:uppercase; letter-spacing:1.5px; font-weight:bold; margin-bottom:4px;">
-        LEVEL 1 — WAKE SIGNAL
-      </div>
-      <div id="hud-objective-text" style="font-size:14px; font-weight:bold; color:#f0f6fc;">
-        Speak with Mara
-      </div>
+      <div id="hud-mission-title" style="font-size:11px; color:#00f0ff; text-transform:uppercase; letter-spacing:1.5px; font-weight:bold; margin-bottom:4px;"></div>
+      <div id="hud-objective-text" style="font-size:14px; font-weight:bold; color:#f0f6fc;"></div>
     `;
     document.body.appendChild(this.card);
 
@@ -64,13 +62,21 @@ export class ObjectiveHUD {
     document.body.appendChild(this.banner);
   }
 
+  show() {
+    this.card.style.display = 'block';
+  }
+
+  hide() {
+    this.card.style.display = 'none';
+  }
+
   setObjective(objective, mission) {
     if (mission) {
-      this.missionTitleEl.textContent = mission.title || 'CAMPAIGN MISSION';
+      this.missionTitleEl.textContent = mission.title || 'LEVEL 1 — WAKE SIGNAL';
     }
     if (objective) {
       this.objectiveTextEl.textContent = objective.title || 'Explore Area';
-      
+      this.card.style.display = 'block';
       this.card.style.transform = 'scale(1.05)';
       this.card.style.borderLeftColor = '#ffffff';
       setTimeout(() => {

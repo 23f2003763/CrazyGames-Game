@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { inputRouter } from '../input/InputRouter.js';
 
 /**
- * InteractionSystem: Proximity-based interaction manager with floating prompt.
+ * InteractionSystem: Proximity-based interaction manager with floating prompt
+ * and unified InputRouter priority routing.
  */
 export class InteractionSystem {
   constructor(camera) {
@@ -36,17 +38,18 @@ export class InteractionSystem {
   }
 
   bindInput() {
-    window.addEventListener('keydown', (e) => {
-      if ((e.code === 'KeyE' || e.key === 'e' || e.key === 'E') && this.currentNearest) {
-        if (this.currentNearest.onInteract) {
-          this.currentNearest.onInteract();
-        }
-      }
+    inputRouter.registerKeyConsumer('interaction', () => {
+      this.interactCurrent();
     });
   }
 
+  interactCurrent() {
+    if (this.currentNearest && this.currentNearest.onInteract) {
+      this.currentNearest.onInteract();
+    }
+  }
+
   registerInteractable(config) {
-    // config: { id, object, radius, text, onInteract, position }
     this.interactables.push(config);
   }
 
@@ -59,6 +62,11 @@ export class InteractionSystem {
   }
 
   update(playerPos) {
+    if (!inputRouter.canInteract()) {
+      this.promptEl.style.display = 'none';
+      return;
+    }
+
     let nearest = null;
     let minDistance = Infinity;
 
@@ -77,21 +85,26 @@ export class InteractionSystem {
 
     this.currentNearest = nearest;
 
-    if (nearest && this.camera) {
-      const targetPos = nearest.position || nearest.object.position;
-      const screenPos = targetPos.clone();
-      screenPos.y += (nearest.promptOffsetY || 1.8);
-      screenPos.project(this.camera);
+    if (this.currentNearest) {
+      const targetPos = this.currentNearest.position || (this.currentNearest.object ? this.currentNearest.object.position : null);
+      const screenPos = this.toScreenPosition(targetPos, this.currentNearest.promptOffsetY || 1.6);
 
-      const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
-      const y = -(screenPos.y * 0.5 - 0.5) * window.innerHeight;
-
-      this.promptEl.style.left = `${x}px`;
-      this.promptEl.style.top = `${y}px`;
-      this.textEl.textContent = nearest.text || 'Interact';
+      this.promptEl.style.left = `${screenPos.x}px`;
+      this.promptEl.style.top = `${screenPos.y}px`;
+      this.textEl.textContent = this.currentNearest.text || 'Interact';
       this.promptEl.style.display = 'block';
     } else {
       this.promptEl.style.display = 'none';
     }
+  }
+
+  toScreenPosition(worldPos, offsetY = 1.6) {
+    const v = new THREE.Vector3(worldPos.x, worldPos.y + offsetY, worldPos.z);
+    v.project(this.camera);
+
+    const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-(v.y * 0.5) + 0.5) * window.innerHeight;
+
+    return { x, y };
   }
 }
