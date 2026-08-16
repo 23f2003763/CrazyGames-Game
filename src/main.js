@@ -6,10 +6,10 @@ import { PlayerController } from './player/PlayerController.js';
 import { PlayerAnimator } from './player/PlayerAnimator.js';
 import { ColliderRegistry } from './physics/ColliderRegistry.js';
 import { WalkableSurfaceSystem } from './physics/WalkableSurfaceSystem.js';
-import { CameraOcclusion } from './camera/CameraOcclusion.js';
 import { MovementFX } from './vfx/MovementFX.js';
 
 // Arcfall Protocol Core Systems
+import { inputRouter } from './input/InputRouter.js';
 import { campaignFrame } from './campaign/CampaignFrame.js';
 import { campaignPath } from './campaign/CampaignPath.js';
 import { CampaignWorld } from './campaign/CampaignWorld.js';
@@ -22,7 +22,8 @@ import { MissionSystem } from './missions/MissionSystem.js';
 import { InteractionSystem } from './gameplay/InteractionSystem.js';
 import { LootSystem } from './gameplay/LootSystem.js';
 import { NPCSystem } from './npc/NPCSystem.js';
-import { PathGuidance } from './ui/PathGuidance.js';
+import { ArcBreadcrumbSystem } from './ui/ArcBreadcrumbSystem.js';
+import { ObjectiveGuidance } from './ui/ObjectiveGuidance.js';
 import { ObjectiveHUD } from './ui/ObjectiveHUD.js';
 import { CheckpointSystem } from './gameplay/CheckpointSystem.js';
 import { AudioSystem } from './audio/AudioSystem.js';
@@ -30,7 +31,7 @@ import { CampaignDebugOverlay } from './ui/CampaignDebugOverlay.js';
 import { DialogueUI } from './ui/DialogueUI.js';
 
 /**
- * Main Application Orchestrator: ARCFALL PROTOCOL
+ * Main Application Orchestrator: ARCFALL PROTOCOL (Vertical Slice)
  */
 class GameApp {
   constructor() {
@@ -49,7 +50,7 @@ class GameApp {
       this.cameraController.camera
     );
 
-    // 4. Core Systems & Single Shared DialogueUI
+    // 4. Core Audio, Checkpoints, Dialogue & Interaction
     this.audioSystem = new AudioSystem();
     this.checkpointSystem = new CheckpointSystem();
     this.dialogueUI = new DialogueUI();
@@ -60,14 +61,14 @@ class GameApp {
     // 5. Cinematics Director
     this.cutsceneDirector = new CutsceneDirector(this.cameraController, this.dialogueUI);
 
-    // 6. Physics, Collisions & Walkable Surfaces
+    // 6. Physics & Colliders
     this.collision = new ColliderRegistry(this.scene);
     this.walkableSurfaceSystem = new WalkableSurfaceSystem(
       this.scene, 
       (x, z) => this.world.sampleHeight(x, z)
     );
 
-    // 7. Campaign World (+Z screen-up corridor, continuous fence, boundary forest)
+    // 7. Campaign World (+Z screen-up corridor, continuous fence, boundary forest, Relay HQ)
     this.world = new CampaignWorld(
       this.scene,
       this.collision,
@@ -96,7 +97,7 @@ class GameApp {
     this.player.rotation.y = Math.atan2(campaignFrame.forwardDir.x, campaignFrame.forwardDir.z);
     this.cameraController.setPlayer(this.player);
 
-    // 9. Combat, Weapons & Enemy Systems
+    // 9. Combat, Stormcore Hammer & Machine Enemies
     this.combatSystem = new CombatSystem(this.scene, this.audioSystem);
     this.weaponSystem = new WeaponSystem(
       this.scene, 
@@ -111,20 +112,20 @@ class GameApp {
       this.combatSystem, 
       this.lootSystem, 
       this.audioSystem,
-      this.dialogueUI
+      this.dialogueUI,
+      this.cameraController
     );
 
     // 10. Mission Guidance & HUD
     this.missionSystem = new MissionSystem(this.audioSystem, this.checkpointSystem);
-    this.pathGuidance = new PathGuidance(this.scene, this.cameraController.camera);
+    this.breadcrumbSystem = new ArcBreadcrumbSystem(this.scene);
+    this.objectiveGuidance = new ObjectiveGuidance(this.scene, this.cameraController.camera);
     this.objectiveHUD = new ObjectiveHUD();
 
-    // 11. Tutorial Director (Runs first in Calibration Yard)
+    // 11. 2-Step Calibration Tutorial (Move -> Dodge)
     this.tutorialDirector = new TutorialDirector(
       this.scene,
       this.player,
-      this.weaponSystem,
-      this.combatSystem,
       this.dialogueUI,
       this.audioSystem,
       () => this.startMainCampaign()
@@ -147,14 +148,6 @@ class GameApp {
       }
     });
 
-    // Development Assertions
-    setTimeout(() => {
-      console.assert(this.world.trail, 'Campaign trail missing');
-      console.assert(this.world.fenceSystem?.group.children.length > 20, 'Fence generation failed');
-      console.assert(this.collision.colliders.length > 10, 'Campaign colliders missing');
-      console.log(`[DEV CHECK] Setup verified: ${this.collision.colliders.length} colliders registered.`);
-    }, 1200);
-
     this.clock = new THREE.Clock();
     this.animate = this.animate.bind(this);
     this.onWindowResize = this.onWindowResize.bind(this);
@@ -166,16 +159,17 @@ class GameApp {
   }
 
   startMainCampaign() {
-    // Multi-shot opening cutscene
+    // 3-Shot Opening Cutscene
     this.cutsceneDirector.playOpeningSequence(() => {
-      // Begin Level 1: "WAKE SIGNAL"
       const firstObj = this.missionSystem.getCurrentObjective();
       this.objectiveHUD.setObjective(firstObj, this.missionSystem.currentMission);
-      this.pathGuidance.setObjective(firstObj);
+      this.objectiveGuidance.setObjective(firstObj);
+      this.breadcrumbSystem.setObjective(firstObj);
 
       this.missionSystem.onObjectiveChanged = (obj, mission) => {
         this.objectiveHUD.setObjective(obj, mission);
-        this.pathGuidance.setObjective(obj);
+        this.objectiveGuidance.setObjective(obj);
+        this.breadcrumbSystem.setObjective(obj);
       };
 
       this.missionSystem.onMissionCompleted = () => {
@@ -199,42 +193,47 @@ class GameApp {
     const deltaTime = Math.min(this.clock.getDelta(), 0.1);
     const elapsedTime = this.clock.getElapsedTime();
 
-    // 1. Cutscene Director
+    // 1. Cutscene Director (letterbox & camera control)
     if (this.cutsceneDirector.isPlaying) {
       this.cutsceneDirector.update(deltaTime);
       this.playerAnimator.update(deltaTime, new THREE.Vector3(), 'idle');
     } else {
-      // 2. Hero Input & Physics
-      this.playerController.update(deltaTime);
+      // 2. Hero Movement & Animation
+      if (inputRouter.canMove()) {
+        this.playerController.update(deltaTime);
+      }
       this.playerAnimator.update(
         deltaTime, 
         this.playerController.velocity, 
         this.playerController.state
       );
 
-      // 3. Weapon Aiming & Firing
+      // 3. Stormcore Hammer Charging & Discharge
       this.weaponSystem.update(deltaTime);
 
       // 4. Camera Follow
       this.cameraController.update(deltaTime);
     }
 
-    // 5. Combat & Enemy Systems Update
+    // 5. Combat & Machine Enemies Update
     this.combatSystem.update(deltaTime);
     this.enemySystem.update(deltaTime, this.player.position);
 
-    // 6. Tutorial Director Update
+    // 6. 2-Step Tutorial Update
     if (!this.tutorialDirector.isCompleted) {
       this.tutorialDirector.update(deltaTime, this.playerController);
     }
 
-    // 7. Gameplay & Mission Systems Update
-    this.world.update(this.player.position);
-    this.interactionSystem.update(this.player.position);
+    // 7. World, Interiors, Interactivity & Missions
+    this.world.update(deltaTime, this.player.position);
+    if (inputRouter.canInteract()) {
+      this.interactionSystem.update(this.player.position);
+    }
     this.lootSystem.update(deltaTime, this.player.position);
     this.npcSystem.update(deltaTime, this.player.position);
     this.missionSystem.update(this.player.position);
-    this.pathGuidance.update(deltaTime, this.player.position);
+    this.breadcrumbSystem.update(deltaTime, this.player.position);
+    this.objectiveGuidance.update(deltaTime, this.player.position);
 
     // 8. Visual Particles & Physics Debug
     if (this.playerController.state === 'dodge' && this.playerController.dodgeTime < 0.05) {
@@ -246,12 +245,11 @@ class GameApp {
     // 9. Debug Overlay
     this.debugOverlay.update();
 
-    // 10. Final Post-Processed Render
+    // 10. Render
     this.renderPipeline.render(deltaTime, this.cameraController.target);
   }
 }
 
-// Initialize when DOM ready
 window.addEventListener('DOMContentLoaded', () => {
   new GameApp();
 });

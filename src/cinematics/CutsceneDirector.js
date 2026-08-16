@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { campaignFrame } from '../campaign/CampaignFrame.js';
+import { inputRouter } from '../input/InputRouter.js';
 
 /**
- * CutsceneDirector: Multi-shot cinematic camera sequencing, camera interpolation,
- * and subtitle synchronization.
+ * CutsceneDirector: Multi-shot timeline camera sequencing with letterbox bars and easing.
  */
 export class CutsceneDirector {
   constructor(cameraController, dialogueUI) {
@@ -21,11 +21,34 @@ export class CutsceneDirector {
     this.endCamPos = new THREE.Vector3();
     this.endTargetPos = new THREE.Vector3();
 
+    this.createLetterbox();
     this.bindInputs();
   }
 
+  createLetterbox() {
+    this.letterboxTop = document.createElement('div');
+    this.letterboxTop.style.cssText = `
+      position: absolute; top: 0; left: 0; width: 100vw; height: 6vh;
+      background: #000; z-index: 4000; transform: translateY(-100%);
+      transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: none;
+    `;
+    this.letterboxBottom = document.createElement('div');
+    this.letterboxBottom.style.cssText = `
+      position: absolute; bottom: 0; left: 0; width: 100vw; height: 6vh;
+      background: #000; z-index: 4000; transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: none;
+    `;
+    document.body.appendChild(this.letterboxTop);
+    document.body.appendChild(this.letterboxBottom);
+  }
+
+  setLetterbox(active) {
+    this.letterboxTop.style.transform = active ? 'translateY(0)' : 'translateY(-100%)';
+    this.letterboxBottom.style.transform = active ? 'translateY(0)' : 'translateY(100%)';
+  }
+
   bindInputs() {
-    window.addEventListener('keydown', (e) => {
+    inputRouter.registerKeyConsumer('cutscene', (e) => {
       if (this.isPlaying && (e.code === 'Space' || e.code === 'Escape')) {
         this.skip();
       }
@@ -34,6 +57,9 @@ export class CutsceneDirector {
 
   playSequence(shots, onComplete) {
     this.isPlaying = true;
+    inputRouter.setLayer('cutscene', true);
+    this.setLetterbox(true);
+
     this.shotQueue = [...shots];
     this.onSequenceComplete = onComplete;
     this.nextShot();
@@ -52,7 +78,7 @@ export class CutsceneDirector {
     const shot = this.shotQueue.shift();
     this.currentShot = shot;
     this.shotTimer = 0;
-    this.duration = shot.duration || 2.5;
+    this.duration = shot.duration || 2.0;
 
     this.startCamPos.copy(this.cameraController.camera.position);
     this.startTargetPos.copy(this.cameraController.target);
@@ -60,7 +86,7 @@ export class CutsceneDirector {
     this.endTargetPos = shot.targetPos.clone();
     this.endCamPos = shot.camOffset
       ? shot.targetPos.clone().add(shot.camOffset)
-      : shot.targetPos.clone().add(new THREE.Vector3(12, 16, 12));
+      : shot.targetPos.clone().add(new THREE.Vector3(10, 14, 10));
 
     if (shot.subtitle && this.dialogueUI) {
       this.dialogueUI.showRadioSubtitle(shot.subtitle.speaker, shot.subtitle.text, this.duration * 1000);
@@ -76,6 +102,9 @@ export class CutsceneDirector {
   finishSequence() {
     this.isPlaying = false;
     this.currentShot = null;
+    this.setLetterbox(false);
+    inputRouter.setLayer('cutscene', false);
+
     const cb = this.onSequenceComplete;
     this.onSequenceComplete = null;
     if (cb) cb();
@@ -84,23 +113,29 @@ export class CutsceneDirector {
   playOpeningSequence(onComplete) {
     const mastPos = campaignFrame.requireAnchor('relay_mast');
     const consolePos = campaignFrame.requireAnchor('signal_console');
-    const hubPos = campaignFrame.requireAnchor('mara_hub');
+    const hqPos = campaignFrame.requireAnchor('mara_hub');
 
     this.playSequence([
+      // Shot 1: Sweeping shot across Relay exterior & antenna
       {
         targetPos: mastPos,
-        duration: 1.6,
-        subtitle: { speaker: 'MARA', text: 'Telemetry alert... Relay antenna picking up unexpected frequency.' }
+        camOffset: new THREE.Vector3(12, 16, 12),
+        duration: 1.5,
+        subtitle: { speaker: 'MARA', text: 'Telemetry alert... External antenna picking up unknown carrier wave.' }
       },
+      // Shot 2: Camera pushes toward comms console as it powers on
       {
         targetPos: consolePos,
-        duration: 1.4,
-        subtitle: { speaker: 'MARA', text: 'Console just powered on with an incoming packet.' }
-      },
-      {
-        targetPos: hubPos,
+        camOffset: new THREE.Vector3(6, 8, 6),
         duration: 1.5,
-        subtitle: { speaker: 'MARA', text: 'Ryder. I just got something impossible.' }
+        subtitle: { speaker: 'MARA', text: 'Console just powered itself on with an incoming packet.' }
+      },
+      // Shot 3: Medium composition showing Mara at console
+      {
+        targetPos: hqPos,
+        camOffset: new THREE.Vector3(8, 12, 8),
+        duration: 1.5,
+        subtitle: { speaker: 'MARA', text: 'Ryder. Come here.' }
       }
     ], onComplete);
   }

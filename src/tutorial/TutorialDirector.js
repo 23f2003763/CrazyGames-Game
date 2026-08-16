@@ -1,56 +1,55 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { campaignFrame } from '../campaign/CampaignFrame.js';
-import { Damageable } from '../combat/Damageable.js';
 
 /**
- * TutorialDirector: 45-60s calibration yard tutorial.
- * Teaches Move, Dodge, and Arc Caster aim & fire on 3 visible standalone target coils.
+ * TutorialDirector: High-speed 2-step Calibration Tutorial (Move -> Dodge).
+ * Target duration: 20-25 seconds.
  */
 export class TutorialDirector {
-  constructor(scene, player, weaponSystem, combatSystem, dialogueUI, audioSystem, onCompleteCallback) {
+  constructor(scene, player, dialogueUI, audioSystem, onCompleteCallback) {
     this.scene = scene;
     this.player = player;
-    this.weaponSystem = weaponSystem;
-    this.combatSystem = combatSystem;
     this.dialogueUI = dialogueUI;
     this.audioSystem = audioSystem;
     this.onComplete = onCompleteCallback;
 
-    this.step = 1; // 1: Move | 2: Dodge | 3: Shoot Coils | 4: Done
+    this.step = 1; // 1: Move | 2: Dodge | 3: Done
     this.isCompleted = false;
 
     this.pulsesHit = 0;
-    this.coilsDestroyed = 0;
     this.pulseMeshes = [];
-    this.coils = [];
-    this.coilModel = null;
+    this.emitterMesh = null;
+    this.scanWave = null;
+    this.waveProgress = 0;
 
     this.createUI();
-    this.loadAssets();
+    this.initStep1();
   }
 
   createUI() {
     this.container = document.createElement('div');
     this.container.id = 'tutorial-overlay';
-    this.container.style.position = 'absolute';
-    this.container.style.top = '80px';
-    this.container.style.left = '50%';
-    this.container.style.transform = 'translateX(-50%)';
-    this.container.style.display = 'flex';
-    this.container.style.flexDirection = 'column';
-    this.container.style.alignItems = 'center';
-    this.container.style.gap = '8px';
-    this.container.style.zIndex = '3500';
-    this.container.style.pointerEvents = 'none';
+    this.container.style.cssText = `
+      position: absolute;
+      top: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 3500;
+      pointer-events: none;
+    `;
 
     this.container.innerHTML = `
       <div id="tut-prompt-card" style="background:rgba(12, 18, 24, 0.94); border:1px solid #00f0ff; padding:10px 24px; border-radius:6px; box-shadow:0 6px 20px rgba(0, 240, 255, 0.2); text-align:center;">
-        <div id="tut-action-title" style="color:#00f0ff; font-family:monospace; font-weight:bold; font-size:16px; letter-spacing:2px; text-transform:uppercase;">CALIBRATION: MOVE</div>
+        <div id="tut-action-title" style="color:#00f0ff; font-family:monospace; font-weight:bold; font-size:15px; letter-spacing:2px; text-transform:uppercase;">CALIBRATION: MOVE</div>
         <div id="tut-action-sub" style="color:#f0f6fc; font-family:monospace; font-size:13px; margin-top:4px;">Use <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">W A S D</span> to step through the cyan calibration nodes</div>
       </div>
       <div style="pointer-events:auto; cursor:pointer; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#8b949e; font-family:monospace; font-size:11px; padding:3px 10px; border-radius:4px;" id="tut-skip-btn">
-        PRESS [TAB] OR CLICK TO SKIP CALIBRATION
+        PRESS [TAB] TO SKIP CALIBRATION
       </div>
     `;
 
@@ -70,19 +69,7 @@ export class TutorialDirector {
     this.subEl = this.container.querySelector('#tut-action-sub');
   }
 
-  loadAssets() {
-    const loader = new GLTFLoader();
-    loader.load('/models/tutorial/arc_calibration_coil.glb', (gltf) => {
-      this.coilModel = gltf.scene;
-      console.log('[TUTORIAL] Arc Calibration Coil asset loaded successfully.');
-      this.initStep1();
-    }, undefined, (err) => {
-      console.error('[TUTORIAL] Failed to load arc_calibration_coil.glb:', err);
-    });
-  }
-
   initStep1() {
-    // Spawn 3 cyan floor pulses
     const pulsePositions = [
       campaignFrame.getAnchorWorld('tutorial_pulse_1'),
       campaignFrame.getAnchorWorld('tutorial_pulse_2'),
@@ -104,140 +91,59 @@ export class TutorialDirector {
   initStep2() {
     this.step = 2;
     this.titleEl.textContent = 'CALIBRATION: EVADE';
-    this.subEl.innerHTML = 'Press <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">SPACE</span> to perform an Arc Evade roll';
+    this.subEl.innerHTML = 'Press <span style="background:#ff7733; color:#111; padding:1px 8px; border-radius:3px; font-weight:bold;">SPACE</span> to dodge through the approaching scan wave';
 
-    // Harmless scanner beam
-    const geo = new THREE.PlaneGeometry(16, 0.4);
-    geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xff3366, transparent: true, opacity: 0.55 });
-    this.scannerMesh = new THREE.Mesh(geo, mat);
-    const centerPos = campaignFrame.getAnchorWorld('tutorial_pulse_2');
-    this.scannerMesh.position.set(centerPos.x, 0.06, centerPos.z);
-    this.scene.add(this.scannerMesh);
-  }
-
-  initStep3() {
-    this.step = 3;
-    if (this.scannerMesh) {
-      this.scene.remove(this.scannerMesh);
-    }
-
-    // Equip Volt Caster
-    if (this.weaponSystem) {
-      this.weaponSystem.equipWeapon('volt_caster');
-    }
-
-    if (this.dialogueUI) {
-      this.dialogueUI.showRadioSubtitle('MARA', "Let's make sure the Caster still knows you.", 3000);
-    }
-
-    this.titleEl.textContent = 'CALIBRATION: ARC CASTER';
-    this.subEl.innerHTML = 'Aim with <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">MOUSE</span> & Hold <span style="background:#00f0ff; color:#111; padding:1px 6px; border-radius:3px; font-weight:bold;">LMB</span> to destroy the 3 Calibration Pylons';
-
-    // Spawn 3 standalone calibration coils
-    ['target_coil_1', 'target_coil_2', 'target_coil_3'].forEach((anchorName) => {
-      this.spawnCalibrationCoil(anchorName);
+    // 1. Load & place physical training emitter
+    const loader = new GLTFLoader();
+    loader.load('/models/tutorial/calibration_emitter.glb', (gltf) => {
+      this.emitterMesh = gltf.scene;
+      const emitterPos = campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -4.5));
+      this.emitterMesh.position.copy(emitterPos);
+      this.scene.add(this.emitterMesh);
     });
 
-    console.assert(this.coils.length === 3, 'Tutorial coils failed to spawn');
-  }
-
-  spawnCalibrationCoil(anchorName) {
-    if (!this.coilModel) {
-      console.error('[TUTORIAL] Coil model not ready when entering Step 3');
-      return;
-    }
-
-    const coil = this.coilModel.clone(true);
-    const pos = campaignFrame.getAnchorWorld(anchorName);
-    coil.position.copy(pos);
-
-    coil.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
+    // 2. Translucent moving scan wave (3.5m wide danger front)
+    const waveGeo = new THREE.PlaneGeometry(4.0, 0.6);
+    waveGeo.rotateX(-Math.PI / 2);
+    const waveMat = new THREE.MeshBasicMaterial({
+      color: 0xff3b30,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
     });
+    this.scanWave = new THREE.Mesh(waveGeo, waveMat);
+    this.scanWave.position.copy(campaignFrame.getAnchorWorld('tutorial_pulse_3'));
+    this.scanWave.position.y = 0.08;
+    this.scene.add(this.scanWave);
 
-    this.scene.add(coil);
-
-    const coilData = {
-      position: pos,
-      radius: 0.95,
-      mesh: coil,
-      damageable: new Damageable({
-        maxHealth: 65,
-        faction: 'prop',
-        onDamaged: () => {
-          // Hit flash
-          coil.traverse((child) => {
-            if (child.isMesh && child.material) {
-              const prevMat = child.material;
-              child.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-              setTimeout(() => { child.material = prevMat; }, 50);
-            }
-          });
-        },
-        onKilled: () => {
-          this.handleCoilDestroyed(coilData);
-        }
-      })
-    };
-
-    this.coils.push(coilData);
-    if (this.combatSystem) {
-      this.combatSystem.registerTarget(coilData);
-    }
-  }
-
-  handleCoilDestroyed(coilData) {
-    if (this.combatSystem) {
-      this.combatSystem.unregisterTarget(coilData);
-    }
-
-    this.scene.remove(coilData.mesh);
-    this.coilsDestroyed++;
-
-    if (this.audioSystem) {
-      this.audioSystem.playMachineDeath();
-    }
-
-    if (this.coilsDestroyed >= 3) {
-      this.finishTutorial();
-    }
+    this.startScanPos = campaignFrame.getAnchorWorld('tutorial_pulse_3').clone().add(new THREE.Vector3(0, 0, -3.0));
+    this.endScanPos = campaignFrame.getAnchorWorld('tutorial_pulse_1').clone().add(new THREE.Vector3(0, 0, 3.0));
   }
 
   finishTutorial() {
     this.isCompleted = true;
-    this.container.remove();
+    if (this.scanWave) this.scene.remove(this.scanWave);
+    if (this.emitterMesh) this.scene.remove(this.emitterMesh);
 
-    if (this.dialogueUI) {
-      this.dialogueUI.showRadioSubtitle('MARA', "Good. Now we've got a real problem.", 3500);
-    }
+    this.titleEl.textContent = 'CALIBRATION COMPLETE';
+    this.titleEl.style.color = '#30d158';
+    this.subEl.textContent = 'Initiating Level 1: WAKE SIGNAL...';
 
     if (this.audioSystem) {
       this.audioSystem.playObjectiveUpdate();
     }
 
-    if (this.onComplete) {
-      this.onComplete();
-    }
+    setTimeout(() => {
+      this.container.remove();
+      if (this.onComplete) {
+        this.onComplete();
+      }
+    }, 600);
   }
 
   skipTutorial() {
     if (this.isCompleted) return;
-
     this.pulseMeshes.forEach(p => this.scene.remove(p.mesh));
-    if (this.scannerMesh) this.scene.remove(this.scannerMesh);
-    this.coils.forEach(c => {
-      this.scene.remove(c.mesh);
-      if (this.combatSystem) this.combatSystem.unregisterTarget(c);
-    });
-
-    if (this.weaponSystem) {
-      this.weaponSystem.equipWeapon('volt_caster');
-    }
-
     this.finishTutorial();
   }
 
@@ -260,8 +166,17 @@ export class TutorialDirector {
         this.initStep2();
       }
     } else if (this.step === 2) {
+      // Animate moving scan wave back and forth toward player
+      this.waveProgress += dt * 0.75;
+      const t = (Math.sin(this.waveProgress * Math.PI * 2) + 1.0) * 0.5;
+      if (this.scanWave) {
+        this.scanWave.position.lerpVectors(this.startScanPos, this.endScanPos, t);
+        this.scanWave.position.y = 0.08;
+      }
+
+      // Complete step 2 when player executes a dodge roll
       if (playerController && playerController.state === 'dodge') {
-        this.initStep3();
+        this.finishTutorial();
       }
     }
   }

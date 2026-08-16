@@ -3,13 +3,14 @@ import { ArcTrail } from './ArcTrail.js';
 import { CorridorFenceSystem } from './CorridorFenceSystem.js';
 import { BoundaryForest } from './BoundaryForest.js';
 import { SectorManager } from './SectorManager.js';
+import { InteriorRevealSystem } from '../world/InteriorRevealSystem.js';
 import { campaignFrame } from './CampaignFrame.js';
 import { campaignPath } from './CampaignPath.js';
 import { proceduralTextures } from '../rendering/ProceduralTextures.js';
 
 /**
  * CampaignWorld: High-quality campaign environment with muddy Arc trail ribbon,
- * continuous electric fence perimeter, dense boundary forest, and authored sectors.
+ * continuous electric fence perimeter, dense boundary forest, and Zomboid-style interior reveals.
  */
 export class CampaignWorld {
   constructor(scene, collisionRegistry, interactionSystem, lootSystem, npcSystem, cutsceneDirector) {
@@ -27,13 +28,16 @@ export class CampaignWorld {
     this.trail = new ArcTrail(this.scene);
     console.assert(this.trail, 'Campaign trail missing');
 
-    // 3. Continuous Electric Security Fence System
+    // 3. Interior Reveal System
+    this.interiorRevealSystem = new InteriorRevealSystem();
+
+    // 4. Continuous Electric Security Fence System
     this.fenceSystem = new CorridorFenceSystem(this.scene, this.collision);
 
-    // 4. Dense Boundary Forest
+    // 5. Dense Boundary Forest
     this.boundaryForest = new BoundaryForest(this.scene);
 
-    // 5. Sector & Entity Manager
+    // 6. Sector & Entity Manager
     this.sectorManager = new SectorManager(
       this.scene, 
       this.collision,
@@ -41,13 +45,14 @@ export class CampaignWorld {
       lootSystem, 
       npcSystem,
       cutsceneDirector,
-      this.fenceSystem
+      this.fenceSystem,
+      this.interiorRevealSystem
     );
     this.sectorManager.loadAllAssetsAndBuild();
   }
 
   buildCampaignTerrain() {
-    const size = 340; // 340x340m ground plane
+    const size = 340;
     const geo = new THREE.PlaneGeometry(size, size, 80, 80);
     geo.rotateX(-Math.PI / 2);
 
@@ -65,7 +70,6 @@ export class CampaignWorld {
       let h = this.sampleHeight(x, z);
       pos.setY(i, h);
 
-      // Distance from closest point on CampaignPath
       const worldP = new THREE.Vector3(x, 0, z);
       const t = campaignPath.getClosestProgress(worldP);
       const pathP = campaignPath.getWorldPointAt(t);
@@ -116,12 +120,14 @@ export class CampaignWorld {
       return 0.0;
     }
 
-    // Outer natural rise beyond fence lines
     const excess = distFromPath - 22.0;
     return Math.pow(Math.min(excess / 24.0, 1.8), 2.0) * 14.0;
   }
 
-  update(playerPos) {
+  update(dt, playerPos) {
+    if (this.interiorRevealSystem) {
+      this.interiorRevealSystem.update(dt, playerPos);
+    }
     if (this.sectorManager) {
       this.sectorManager.update(playerPos);
     }
